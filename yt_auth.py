@@ -18,7 +18,6 @@
 # print(f"\n✅ Authorized! Token saved to {os.environ.get('YT_TOKEN_FILE', 'data/yt_token.json')}")
 # print("You can now start the app — uploads will happen automatically.")
 
-
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -29,9 +28,12 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 CLIENT_SECRET_FILE = os.environ.get("YT_CLIENT_SECRET", "client_secret.json")
 TOKEN_FILE = os.environ.get("YT_TOKEN_FILE", "data/yt_token.json")
 
-flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
+flow = InstalledAppFlow.from_client_secrets_file(
+    CLIENT_SECRET_FILE,
+    SCOPES,
+    redirect_uri="urn:ietf:wg:oauth:2.0:oob"
+)
 
-# Generate the auth URL manually
 auth_url, _ = flow.authorization_url(prompt="consent")
 
 print("\n" + "="*60)
