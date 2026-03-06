@@ -3,7 +3,7 @@ renderer.py — Reel rendering logic (adapted from reel_maker.py)
 Called per-job so one failure never blocks others.
 """
 import os, re, asyncio, textwrap, random, json, logging
-import edge_tts
+# import edge_tts
 from moviepy import (
     ImageClip, AudioFileClip, TextClip,
     CompositeVideoClip, CompositeAudioClip,
@@ -88,22 +88,27 @@ def contains_power_word(line: str) -> bool:
 #         await communicate.save(filename)
 
 
+# async def _generate_voice(text: str, filename: str):
+#     import edge_tts
+#     import asyncio
+#     import ssl
+#     import certifi
+
+#     proxy = os.environ.get("TTS_PROXY", "socks5://172.17.0.1:9050")
+
+#     communicate = edge_tts.Communicate(
+#         text=text,
+#         voice=TTS_VOICE,
+#         rate=TTS_RATE,
+#         pitch=TTS_PITCH,
+#         proxy=proxy,
+#     )
+#     await communicate.save(filename)
+
 async def _generate_voice(text: str, filename: str):
-    import edge_tts
-    import asyncio
-    import ssl
-    import certifi
-
-    proxy = os.environ.get("TTS_PROXY", "socks5://172.17.0.1:9050")
-
-    communicate = edge_tts.Communicate(
-        text=text,
-        voice=TTS_VOICE,
-        rate=TTS_RATE,
-        pitch=TTS_PITCH,
-        proxy=proxy,
-    )
-    await communicate.save(filename)
+    from gtts import gTTS
+    tts = gTTS(text=text, lang="en", slow=False)
+    tts.save(filename)
 
 def build_outro_clips(voice_duration, total_duration):
     outro_start = voice_duration + SILENCE_BUFFER
