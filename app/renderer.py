@@ -69,24 +69,41 @@ def contains_power_word(line: str) -> bool:
 #     comm = edge_tts.Communicate(text=text, voice=TTS_VOICE, rate=TTS_RATE, pitch=TTS_PITCH)
 #     await comm.save(filename)
 
+# async def _generate_voice(text: str, filename: str):
+#     import aiohttp
+#     from aiohttp_socks import ProxyConnector
+#     import edge_tts
+
+#     proxy = os.environ.get("TTS_PROXY", "socks5://172.17.0.1:9050")
+#     connector = ProxyConnector.from_url(proxy)
+
+#     async with aiohttp.ClientSession(connector=connector) as session:
+#         communicate = edge_tts.Communicate(
+#             text=text,
+#             voice=TTS_VOICE,
+#             rate=TTS_RATE,
+#             pitch=TTS_PITCH,
+#         )
+#         communicate._session = session
+#         await communicate.save(filename)
+
+
 async def _generate_voice(text: str, filename: str):
-    import aiohttp
-    from aiohttp_socks import ProxyConnector
     import edge_tts
+    import asyncio
+    import ssl
+    import certifi
 
     proxy = os.environ.get("TTS_PROXY", "socks5://172.17.0.1:9050")
-    connector = ProxyConnector.from_url(proxy)
 
-    async with aiohttp.ClientSession(connector=connector) as session:
-        communicate = edge_tts.Communicate(
-            text=text,
-            voice=TTS_VOICE,
-            rate=TTS_RATE,
-            pitch=TTS_PITCH,
-        )
-        communicate._session = session
-        await communicate.save(filename)
-
+    communicate = edge_tts.Communicate(
+        text=text,
+        voice=TTS_VOICE,
+        rate=TTS_RATE,
+        pitch=TTS_PITCH,
+        proxy=proxy,
+    )
+    await communicate.save(filename)
 
 def build_outro_clips(voice_duration, total_duration):
     outro_start = voice_duration + SILENCE_BUFFER
