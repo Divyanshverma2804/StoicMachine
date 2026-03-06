@@ -227,7 +227,7 @@ def render_reel(reel_name: str, script: str, sections_json: str | None) -> str:
     subtitle_clips = build_subtitle_clips(lines, voice_dur, sections)
     outro_clips    = build_outro_clips(voice_dur, total_dur)
 
-    music = (AudioFileClip(MUSIC_FILE).subclipped(0,total_dur)
+    music = (AudioFileClip(MUSIC_FILE).subclip(0,total_dur)
              .with_volume_scaled(0.12)
              .with_effects([afx.AudioFadeOut(OUTRO_FADE_OUT+0.2)]))
     final_audio = CompositeAudioClip([voice.with_effects([afx.AudioFadeOut(0.5)]), music])
