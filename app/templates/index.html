@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ReelForge — Content Studio</title>
+<style>
+  :root {
+    --bg: #0d0d0f;
+    --card: #16161a;
+    --border: #2a2a30;
+    --accent: #6c63ff;
+    --accent2: #ff6584;
+    --text: #e8e8f0;
+    --muted: #6b6b80;
+    --success: #4ade80;
+    --warn: #facc15;
+    --fail: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+
+  /* ── Layout ── */
+  .container { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+  header { padding: 24px 0 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 14px; }
+  header .logo { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  header .logo span { color: var(--accent); }
+  header .badge { background: var(--accent); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+  .layout { display: grid; grid-template-columns: 1fr 420px; gap: 24px; padding: 28px 0; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  /* ── Cards ── */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .card-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 18px; }
+
+  /* ── Form ── */
+  textarea, input[type=datetime-local], input[type=text] {
+    width: 100%; background: #0d0d0f; border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 10px 14px;
+    font-size: 13px; font-family: 'JetBrains Mono', monospace; outline: none;
+    transition: border-color .2s;
+  }
+  textarea:focus, input:focus { border-color: var(--accent); }
+  #content_md { height: 420px; resize: vertical; line-height: 1.6; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; margin-top: 16px; }
+  label:first-of-type { margin-top: 0; }
+
+  .btn { display: inline-flex; align-items: center; gap: 7px; padding: 10px 20px; border-radius: 8px;
+         font-weight: 600; font-size: 13px; border: none; cursor: pointer; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
+  .btn-retry { background: #2a2a40; color: var(--warn); }
+  .btn-del { background: #2a1a1a; color: var(--fail); }
+  .btn-time { background: #1a2a2a; color: #5eead4; }
+
+  /* ── Status badges ── */
+  .status { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+  .status-pending   { background: #2a2a20; color: var(--warn); }
+  .status-rendering { background: #1a2040; color: #818cf8; }
+  .status-rendered  { background: #1a2a20; color: #4ade80; }
+  .status-uploading { background: #1a2030; color: #38bdf8; }
+  .status-done      { background: #0f2a0f; color: var(--success); }
+  .status-failed    { background: #2a0f0f; color: var(--fail); }
+
+  /* ── Jobs table ── */
+  .jobs-list { display: flex; flex-direction: column; gap: 10px; }
+  .job-card { background: #0d0d0f; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .job-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .job-name { font-size: 14px; font-weight: 600; flex: 1; }
+  .job-meta { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.7; }
+  .job-meta a { color: var(--accent); text-decoration: none; }
+  .job-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+  .job-err { font-size: 11px; color: var(--fail); margin-top: 6px; background: #1a0808; padding: 6px 10px; border-radius: 6px; word-break: break-all; }
+
+  /* ── Upload time inline form ── */
+  .upload-form { display: flex; gap: 6px; align-items: center; }
+  .upload-form input { width: 190px; padding: 5px 10px; font-size: 12px; font-family: system-ui; }
+
+  /* ── Stats bar ── */
+  .stats { display: flex; gap: 16px; flex-wrap: wrap; padding: 14px 0 4px; }
+  .stat { font-size: 12px; color: var(--muted); }
+  .stat span { font-weight: 700; color: var(--text); }
+
+  /* ── Empty state ── */
+  .empty { text-align: center; padding: 48px 0; color: var(--muted); font-size: 14px; }
+  .empty .icon { font-size: 36px; margin-bottom: 10px; }
+
+  /* ── Live refresh indicator ── */
+  .refresh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success);
+                 display: inline-block; margin-right: 6px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .section-hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="logo">Reel<span>Forge</span></div>
+    <span class="badge">v1</span>
+    <div style="margin-left:auto; font-size:12px; color:var(--muted);">
+      <span class="refresh-dot"></span>Auto-refreshing
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <!-- LEFT: Submit form -->
+    <div>
+      <div class="card">
+        <div class="card-title">📋 Paste Today's Content Script</div>
+
+        <form method="POST" action="/submit" id="submitForm">
+          <label>content.md</label>
+          <textarea name="content_md" id="content_md" placeholder="# ReelName: your_reel_name
+
+## Hook:
+Your hook line here.
+
+## Conflict:
+Line 1.
+Line 2.
+
+## Shift:
+Line 1.
+Line 2.
+
+## Punch:
+Your punch line.
+
+## Engage:
+Type WORD if this hit.
+
+---
+
+# ReelName: next_reel
+..."></textarea>
+
+          <label>Global Upload Time (optional — applies to all reels in this batch)</label>
+          <input type="datetime-local" name="upload_time" id="upload_time"/>
+          <div class="section-hint">Leave blank to render-only (you can set per-reel upload times later).</div>
+
+          <div style="margin-top:20px;">
+            <button type="submit" class="btn btn-primary" id="submitBtn">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              Queue Reels
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div style="margin-top:16px; padding:14px 18px; background:var(--card); border:1px solid var(--border); border-radius:10px; font-size:12px; color:var(--muted); line-height:1.8;">
+        <strong style="color:var(--text);">How it works</strong><br>
+        1. Paste your <code>content.md</code> above — each <code># ReelName</code> becomes a separate job.<br>
+        2. Reels are rendered one at a time in the background (no crashes block other reels).<br>
+        3. Set an upload time per reel — the scheduler uploads to YouTube automatically.<br>
+        4. Failed jobs can be retried individually.
+      </div>
+    </div>
+
+    <!-- RIGHT: Job queue -->
+    <div>
+      <div class="card">
+        <div class="card-title">🎬 Job Queue</div>
+
+        {% set counts = {"pending":0,"rendering":0,"rendered":0,"uploading":0,"done":0,"failed":0} %}
+        {% for job in jobs %}{% set _ = counts.update({job.status: counts[job.status]+1}) %}{% endfor %}
+
+        <div class="stats">
+          <div class="stat">Pending <span>{{ counts["pending"] }}</span></div>
+          <div class="stat">Rendering <span>{{ counts["rendering"] }}</span></div>
+          <div class="stat">Rendered <span>{{ counts["rendered"] }}</span></div>
+          <div class="stat">Done <span>{{ counts["done"] }}</span></div>
+          <div class="stat">Failed <span>{{ counts["failed"] }}</span></div>
+        </div>
+
+        <div style="margin-top:16px;">
+          {% if not jobs %}
+          <div class="empty">
+            <div class="icon">🎞️</div>
+            No jobs yet. Paste your script to get started.
+          </div>
+          {% else %}
+          <div class="jobs-list">
+            {% for job in jobs %}
+            <div class="job-card" id="job-{{ job.id }}">
+              <div class="job-top">
+                <div class="job-name">{{ job.reel_name }}</div>
+                <span class="status status-{{ job.status }}">{{ job.status }}</span>
+              </div>
+
+              <div class="job-meta">
+                Batch: <code>{{ job.batch_id }}</code> &nbsp;·&nbsp; #{{ job.id }}<br>
+                Created: {{ job.created_at }}<br>
+                {% if job.upload_time %}
+                Upload at: <strong style="color:var(--warn)">{{ job.upload_time }}</strong><br>
+                {% endif %}
+                {% if job.yt_video_id %}
+                YouTube: <a href="https://youtu.be/{{ job.yt_video_id }}" target="_blank">youtu.be/{{ job.yt_video_id }}</a><br>
+                {% endif %}
+                {% if job.output_path %}
+                File: <code>{{ job.output_path }}</code>
+                {% endif %}
+              </div>
+
+              {% if job.error_msg %}
+              <div class="job-err">⚠️ {{ job.error_msg }}</div>
+              {% endif %}
+
+              <div class="job-actions">
+                {% if job.status in ["failed", "pending"] %}
+                <button class="btn btn-sm btn-retry" onclick="retryJob('{{ job.id }}')">↩ Retry</button>
+                {% endif %}
+
+                {% if job.status in ["rendered"] %}
+                <form class="upload-form" onsubmit="setUploadTime(event, '{{ job.id }}')">
+                  <input type="datetime-local" name="upload_time" required placeholder="Schedule upload"/>
+                  <button type="submit" class="btn btn-sm btn-time">📅 Set</button>
+                </form>
+                {% endif %}
+
+                <button class="btn btn-sm btn-del" onclick="deleteJob('{{ job.id }}')">✕</button>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Auto-refresh jobs every 8s ──
+function refreshJobs() {
+  fetch('/jobs')
+    .then(r => r.json())
+    .then(jobs => {
+      // Only reload page if any status changed (avoid flicker)
+      const current = document.querySelectorAll('.job-card');
+      // const ids = [...current].map(c => parseInt(c.id.split('-')[1]));      // CHANGED HERE BY DIVYANSH If job.id is UUID, this will break.
+      const ids = [...current].map(c => c.id.split('-')[1]);
+      const newIds = jobs.map(j => j.id);
+      // Simple check: if count changed or any status differs, reload
+      const changed = jobs.some(j => {
+        const el = document.getElementById(`job-${j.id}`);
+        if (!el) return true;
+        const badge = el.querySelector('.status');
+        return badge && badge.className !== `status status-${j.status}`;
+      });
+      if (changed || ids.length !== newIds.length) {
+        window.location.reload();
+      }
+    })
+    .catch(() => {});
+}
+setInterval(refreshJobs, 8000);
+
+// ── Actions ──
+async function retryJob(id) {
+  await fetch(`/jobs/${id}/retry`, { method: 'POST' });
+  window.location.reload();
+}
+
+async function deleteJob(id) {
+  if (!confirm('Delete this job?')) return;
+  await fetch(`/jobs/${id}`, { method: 'DELETE' });
+  document.getElementById(`job-${id}`)?.remove();
+}
+
+async function setUploadTime(e, id) {
+  e.preventDefault();
+  const form = e.target;
+  const data = new FormData(form);
+  await fetch(`/jobs/${id}/set_upload_time`, { method: 'POST', body: data });
+  window.location.reload();
+}
+
+// ── Submit guard ──
+document.getElementById('submitForm').addEventListener('submit', function() {
+  document.getElementById('submitBtn').textContent = 'Queuing…';
+  document.getElementById('submitBtn').disabled = true;
+});
+</script>
+
+</body>
+</html>

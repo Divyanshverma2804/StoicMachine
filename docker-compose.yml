@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  reelforge:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Persist DB, rendered videos, stock images, YT token
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./stock:/app/stock
+      - ./music.mp3:/app/music.mp3:ro
+      # Mount your YT client_secret.json
+      - ./client_secret.json:/app/client_secret.json:ro
+    # Limit render concurrency — one job at a time is handled by the scheduler
+    # but you can scale workers here later
+    deploy:
+      resources:
+        limits:
+          memory: 8g
