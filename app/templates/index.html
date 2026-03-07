@@ -233,6 +233,7 @@ Type WORD if this hit.
 
   </div>
 </div>
+
 <script>
 // ── Save form state to sessionStorage on every keystroke ──
 const contentEl = document.getElementById('content_md');
@@ -252,56 +253,140 @@ function restoreFormState() {
 
 contentEl.addEventListener('input', saveFormState);
 timeEl.addEventListener('change', saveFormState);
-
-// Restore on page load
 restoreFormState();
 
-// ── Auto-refresh jobs every 8s ──
-function refreshJobs() {
-  // Don't reload if user is actively typing in the textarea
-  if (document.activeElement === contentEl) return;
+// ── Status class map ──
+const STATUS_CLASSES = ['pending','rendering','rendered','uploading','done','failed'];
 
+// ── Update job queue in-place (no page reload) ──
+function refreshJobs() {
   fetch('/jobs')
     .then(r => r.json())
     .then(jobs => {
-      const current = document.querySelectorAll('.job-card');
-      const ids = [...current].map(c => c.id.split('-')[1]);
-      const newIds = jobs.map(j => j.id);
-      const changed = jobs.some(j => {
-        const el = document.getElementById(`job-${j.id}`);
-        if (!el) return true;
-        const badge = el.querySelector('.status');
-        return badge && badge.className !== `status status-${j.status}`;
-      });
-      if (changed || ids.length !== newIds.length) {
-        saveFormState(); // Save before reload
-        window.location.reload();
+      const list = document.querySelector('.jobs-list');
+      const emptyEl = document.querySelector('.empty');
+
+      // If no jobs at all
+      if (jobs.length === 0) {
+        if (list) list.innerHTML = '<div class="empty"><div class="icon">🎞️</div>No jobs yet. Paste your script to get started.</div>';
+        updateStats(jobs);
+        return;
       }
+
+      // If jobs-list doesn't exist yet (was empty state), reload once to get proper HTML
+      if (!list) { window.location.reload(); return; }
+
+      // Update existing cards & add new ones
+      const renderedIds = new Set([...list.querySelectorAll('.job-card')].map(el => el.id.split('-')[1]));
+      const incomingIds = new Set(jobs.map(j => String(j.id)));
+
+      // Remove cards no longer in jobs
+      renderedIds.forEach(id => {
+        if (!incomingIds.has(id)) document.getElementById(`job-${id}`)?.remove();
+      });
+
+      jobs.forEach(job => {
+        const id = String(job.id);
+        let card = document.getElementById(`job-${id}`);
+
+        if (!card) {
+          // New job — reload to get full server-rendered HTML for it
+          window.location.reload();
+          return;
+        }
+
+        // Update status badge only
+        const badge = card.querySelector('.status');
+        if (badge) {
+          const newClass = `status status-${job.status}`;
+          if (badge.className !== newClass) {
+            badge.className = newClass;
+            badge.textContent = job.status;
+          }
+        }
+
+        // Update error message
+        let errEl = card.querySelector('.job-err');
+        if (job.error_msg) {
+          if (!errEl) {
+            errEl = document.createElement('div');
+            errEl.className = 'job-err';
+            card.querySelector('.job-actions').before(errEl);
+          }
+          errEl.textContent = `⚠️ ${job.error_msg}`;
+        } else if (errEl) {
+          errEl.remove();
+        }
+
+        // Update action buttons based on new status
+        const actions = card.querySelector('.job-actions');
+        if (actions) {
+          // Retry button
+          let retryBtn = actions.querySelector('.btn-retry');
+          if (['failed', 'pending'].includes(job.status)) {
+            if (!retryBtn) {
+              retryBtn = document.createElement('button');
+              retryBtn.className = 'btn btn-sm btn-retry';
+              retryBtn.textContent = '↩ Retry';
+              retryBtn.onclick = () => retryJob(id);
+              actions.prepend(retryBtn);
+            }
+          } else {
+            retryBtn?.remove();
+          }
+
+          // Upload time form
+          let uploadForm = actions.querySelector('.upload-form');
+          if (job.status === 'rendered') {
+            if (!uploadForm) {
+              uploadForm = document.createElement('form');
+              uploadForm.className = 'upload-form';
+              uploadForm.innerHTML = `<input type="datetime-local" name="upload_time" required/><button type="submit" class="btn btn-sm btn-time">📅 Set</button>`;
+              uploadForm.onsubmit = (e) => setUploadTime(e, id);
+              const delBtn = actions.querySelector('.btn-del');
+              actions.insertBefore(uploadForm, delBtn);
+            }
+          } else {
+            uploadForm?.remove();
+          }
+        }
+      });
+
+      updateStats(jobs);
     })
     .catch(() => {});
 }
+
+function updateStats(jobs) {
+  const counts = {pending:0, rendering:0, rendered:0, uploading:0, done:0, failed:0};
+  jobs.forEach(j => { if (counts[j.status] !== undefined) counts[j.status]++; });
+  document.querySelectorAll('.stat').forEach(el => {
+    const label = el.textContent.trim().toLowerCase().split(' ')[0];
+    if (counts[label] !== undefined) el.querySelector('span').textContent = counts[label];
+  });
+}
+
 setInterval(refreshJobs, 8000);
 
 // ── Actions ──
 async function retryJob(id) {
-  saveFormState();
   await fetch(`/jobs/${id}/retry`, { method: 'POST' });
-  window.location.reload();
+  refreshJobs();
 }
 
 async function deleteJob(id) {
   if (!confirm('Delete this job?')) return;
   await fetch(`/jobs/${id}`, { method: 'DELETE' });
   document.getElementById(`job-${id}`)?.remove();
+  const jobs = await fetch('/jobs').then(r => r.json());
+  updateStats(jobs);
 }
 
 async function setUploadTime(e, id) {
   e.preventDefault();
-  const form = e.target;
-  const data = new FormData(form);
-  saveFormState();
+  const data = new FormData(e.target);
   await fetch(`/jobs/${id}/set_upload_time`, { method: 'POST', body: data });
-  window.location.reload();
+  refreshJobs();
 }
 
 // ── Clear saved state on successful submit ──
