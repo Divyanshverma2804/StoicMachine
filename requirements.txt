@@ -1,24 +1,13 @@
-# Web framework
-fastapi==0.111.0
-uvicorn[standard]==0.29.0
-jinja2==3.1.4
-python-multipart==0.0.9
-
-# DB
+fastapi>=0.115.2
+uvicorn[standard]>=0.29.0
+jinja2>=3.1.4
+python-multipart>=0.0.18
 sqlalchemy==2.0.30
-
-# Scheduling
 apscheduler==3.10.4
-
-# Video / audio (MoviePy 2.x)
-moviepy==2.0.0
-edge-tts==6.1.12
-
-# YouTube upload
+moviepy==2.2.1
+chatterbox-tts==0.1.6
 google-api-python-client==2.131.0
 google-auth==2.29.0
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.0
-
-# Utilities
 python-dotenv==1.0.1
