@@ -601,7 +601,11 @@
 
     <div class="header-right">
       <div class="server-time-display">
-        🕐 <span class="time-val" id="headerClock">--:--:--</span>
+        <span style="color:var(--text3);font-size:10px;margin-right:2px;">UTC</span>
+        <span class="time-val" id="headerClockUTC">--:--:--</span>
+        <span style="color:var(--border2);margin:0 6px;">|</span>
+        <span style="color:var(--text3);font-size:10px;margin-right:2px;">IST</span>
+        <span class="time-val" style="color:var(--warn-bright)" id="headerClockIST">--:--:--</span>
       </div>
       <div class="live-badge">
         <span class="refresh-dot"></span>Live
@@ -658,13 +662,13 @@ Type IRON if this hit.
 
           <div class="field" style="margin-top:16px;">
             <div class="field-label">
-              <span>Global Upload Time</span>
+              <span>Global Upload Time <span style="color:var(--text3);font-weight:400;font-size:10px;text-transform:none;letter-spacing:0">(UTC — server time)</span></span>
               <span class="field-hint">Optional — applies to all reels in this batch</span>
             </div>
 
             <div class="dt-row">
               <div>
-                <div class="dt-part-label">Date</div>
+                <div class="dt-part-label">Date (UTC)</div>
                 <div class="dt-part">
                   <select id="g_date" onchange="updateGlobalPreview()">
                     <!-- populated by JS -->
@@ -672,9 +676,9 @@ Type IRON if this hit.
                 </div>
               </div>
               <div>
-                <div class="dt-part-label">Hour</div>
+                <div class="dt-part-label">Hour (0–23)</div>
                 <div class="dt-part">
-                  <input type="number" id="g_hour" min="1" max="12" value="12" onchange="updateGlobalPreview()" oninput="updateGlobalPreview()"/>
+                  <input type="number" id="g_hour" min="0" max="23" value="12" onchange="updateGlobalPreview()" oninput="updateGlobalPreview()"/>
                 </div>
               </div>
               <div>
@@ -683,26 +687,20 @@ Type IRON if this hit.
                   <input type="number" id="g_min" min="0" max="59" value="0" onchange="updateGlobalPreview()" oninput="updateGlobalPreview()"/>
                 </div>
               </div>
-              <div>
-                <div class="dt-part-label">AM/PM</div>
-                <div class="dt-part">
-                  <select id="g_ampm" onchange="updateGlobalPreview()">
-                    <option value="AM">AM</option>
-                    <option value="PM">PM</option>
-                  </select>
-                </div>
-              </div>
             </div>
 
-            <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-              <button type="button" class="now-btn" onclick="setGlobalNow()">⚡ Now +1h</button>
-              <button type="button" class="now-btn" onclick="setGlobalTomorrow()">🌅 Tomorrow 9 AM</button>
+            <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <button type="button" class="now-btn" onclick="setGlobalNow()">⚡ Now +1h (UTC)</button>
+              <button type="button" class="now-btn" onclick="setGlobalTomorrow()">🌅 Tomorrow 9 AM UTC</button>
               <button type="button" class="now-btn" onclick="clearGlobalTime()" style="color:var(--text3);">✕ Clear</button>
             </div>
 
             <div class="dt-preview hidden" id="g_preview">
               <span class="dt-icon">📅</span>
               <span id="g_preview_text"></span>
+              <span style="color:var(--border2);margin:0 6px;">→</span>
+              <span style="color:var(--warn-bright);font-size:10px;">IST:</span>
+              <span id="g_preview_ist" style="color:var(--warn-bright);"></span>
             </div>
           </div>
 
@@ -808,15 +806,12 @@ Type IRON if this hit.
                 <div class="job-upload-picker" id="picker-{{ job.id }}">
                   <div class="job-dt-row">
                     <select class="date-sel" id="jd_date_{{ job.id }}" onchange="updateJobPreview('{{ job.id }}')"></select>
-                    <input type="number" class="hour-inp" id="jd_hour_{{ job.id }}" min="1" max="12" value="12" onchange="updateJobPreview('{{ job.id }}')" oninput="updateJobPreview('{{ job.id }}')"/>
+                    <input type="number" class="hour-inp" id="jd_hour_{{ job.id }}" min="0" max="23" value="12" placeholder="HH" onchange="updateJobPreview('{{ job.id }}')" oninput="updateJobPreview('{{ job.id }}')"/>
                     <span style="color:var(--text3);font-size:11px">:</span>
-                    <input type="number" class="min-inp" id="jd_min_{{ job.id }}" min="0" max="59" value="0" onchange="updateJobPreview('{{ job.id }}')" oninput="updateJobPreview('{{ job.id }}')"/>
-                    <select class="ampm-sel" id="jd_ampm_{{ job.id }}" onchange="updateJobPreview('{{ job.id }}')">
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                    <button type="button" class="job-now-btn" onclick="setJobNow('{{ job.id }}')">+1h</button>
+                    <input type="number" class="min-inp" id="jd_min_{{ job.id }}" min="0" max="59" value="0" placeholder="MM" onchange="updateJobPreview('{{ job.id }}')" oninput="updateJobPreview('{{ job.id }}')"/>
+                    <button type="button" class="job-now-btn" onclick="setJobNow('{{ job.id }}')">+1h UTC</button>
                   </div>
+                  <div id="jd_ist_{{ job.id }}" style="font-size:10px;color:var(--warn-bright);font-family:'DM Mono',monospace;margin-top:3px;"></div>
                   <button class="btn btn-sm btn-time" onclick="submitJobUploadTime('{{ job.id }}')">📅 Set</button>
                 </div>
                 {% endif %}
@@ -836,27 +831,73 @@ Type IRON if this hit.
 
 <script>
 // ═══════════════════════════════════════════════════════════
+// UTC ↔ IST HELPERS  (IST = UTC + 5h 30m)
+// ═══════════════════════════════════════════════════════════
+function utcToIST(utcDate) {
+  return new Date(utcDate.getTime() + (5 * 60 + 30) * 60000);
+}
+
+function fmtTime24(d) {
+  return String(d.getUTCHours()).padStart(2,'0') + ':' + String(d.getUTCMinutes()).padStart(2,'0');
+}
+
+function fmtDatetime(d) {
+  // d is a plain Date; read UTC fields for display
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${days[d.getUTCDay()]} ${d.getUTCDate()} ${months[d.getUTCMonth()]} ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
+}
+
+// Build a UTC Date from a YYYY-MM-DD string + 24h hour/min integers
+function buildUTCDate(dateStr, hour, min) {
+  // dateStr is UTC date e.g. "2026-03-08"
+  return new Date(`${dateStr}T${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}:00Z`);
+}
+
+// Build datetime-local string (no timezone) that Python/FastAPI will treat as UTC
+function buildDatetimeLocal(dateStr, hour, min) {
+  if (!dateStr) return '';
+  return `${dateStr}T${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+}
+
+// ═══════════════════════════════════════════════════════════
 // CLOCK
 // ═══════════════════════════════════════════════════════════
 function tickClock() {
   const now = new Date();
-  document.getElementById('headerClock').textContent =
-    now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  // UTC time — read UTC fields directly
+  const utcStr = String(now.getUTCHours()).padStart(2,'0') + ':' +
+                 String(now.getUTCMinutes()).padStart(2,'0') + ':' +
+                 String(now.getUTCSeconds()).padStart(2,'0');
+  const ist = utcToIST(now);
+  const istStr = String(ist.getUTCHours()).padStart(2,'0') + ':' +
+                 String(ist.getUTCMinutes()).padStart(2,'0') + ':' +
+                 String(ist.getUTCSeconds()).padStart(2,'0');
+  document.getElementById('headerClockUTC').textContent = utcStr;
+  document.getElementById('headerClockIST').textContent = istStr;
 }
 tickClock();
 setInterval(tickClock, 1000);
 
 // ═══════════════════════════════════════════════════════════
-// DATE DROPDOWN POPULATION
+// DATE DROPDOWN — UTC dates
 // ═══════════════════════════════════════════════════════════
 function getNextDays(n) {
   const days = [];
   const now = new Date();
+  // Work in UTC
+  const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const monNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   for (let i = 0; i < n; i++) {
-    const d = new Date(now);
-    d.setDate(now.getDate() + i);
-    const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    const val = d.toISOString().split('T')[0]; // YYYY-MM-DD
+    const d = new Date(todayUTC.getTime() + i * 86400000);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth()+1).padStart(2,'0');
+    const day = String(d.getUTCDate()).padStart(2,'0');
+    const val = `${y}-${m}-${day}`;
+    const label = i === 0 ? `Today (${day} ${monNames[d.getUTCMonth()]} UTC)` :
+                  i === 1 ? `Tomorrow (${day} ${monNames[d.getUTCMonth()]} UTC)` :
+                  `${dayNames[d.getUTCDay()]} ${day} ${monNames[d.getUTCMonth()]}`;
     days.push({ label, val });
   }
   return days;
@@ -888,12 +929,10 @@ const contentEl = document.getElementById('content_md');
 
 function saveFormState() {
   sessionStorage.setItem('rf_content', contentEl.value);
-  // Save global time picker state
   const state = {
     date: document.getElementById('g_date')?.value || '',
     hour: document.getElementById('g_hour')?.value || '12',
     min:  document.getElementById('g_min')?.value  || '0',
-    ampm: document.getElementById('g_ampm')?.value || 'PM',
   };
   sessionStorage.setItem('rf_time_state', JSON.stringify(state));
 }
@@ -909,19 +948,17 @@ function restoreFormState() {
       const s = JSON.parse(ts);
       const dateEl = document.getElementById('g_date');
       if (dateEl && s.date) {
-        // find and select the right option
         [...dateEl.options].forEach(o => { if (o.value === s.date) o.selected = true; });
       }
-      if (s.hour) document.getElementById('g_hour').value = s.hour;
-      if (s.min)  document.getElementById('g_min').value  = s.min;
-      if (s.ampm) document.getElementById('g_ampm').value = s.ampm;
+      if (s.hour !== undefined) document.getElementById('g_hour').value = s.hour;
+      if (s.min  !== undefined) document.getElementById('g_min').value  = s.min;
       updateGlobalPreview();
     } catch(e) {}
   }
 }
 
 contentEl.addEventListener('input', () => { saveFormState(); updateCharCount(); });
-['g_date','g_hour','g_min','g_ampm'].forEach(id => {
+['g_date','g_hour','g_min'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('change', saveFormState);
 });
@@ -935,30 +972,13 @@ function updateCharCount() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// GLOBAL TIME PICKER
+// GLOBAL TIME PICKER — UTC
 // ═══════════════════════════════════════════════════════════
-function buildDatetimeLocal(dateVal, hour, min, ampm) {
-  if (!dateVal) return '';
-  let h = parseInt(hour) % 12;
-  if (ampm === 'PM') h += 12;
-  const hh = String(h).padStart(2, '0');
-  const mm = String(parseInt(min)).padStart(2, '0');
-  return `${dateVal}T${hh}:${mm}`;
-}
-
-function formatPreview(dateVal, hour, min, ampm) {
-  if (!dateVal) return '';
-  const dt = new Date(buildDatetimeLocal(dateVal, hour, min, ampm));
-  return dt.toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
-}
-
 function updateGlobalPreview() {
   const date = document.getElementById('g_date').value;
-  const hour = document.getElementById('g_hour').value;
-  const min  = document.getElementById('g_min').value;
-  const ampm = document.getElementById('g_ampm').value;
+  const hour = parseInt(document.getElementById('g_hour').value) || 0;
+  const min  = parseInt(document.getElementById('g_min').value)  || 0;
   const preview = document.getElementById('g_preview');
-  const previewText = document.getElementById('g_preview_text');
 
   if (!date) {
     preview.classList.add('hidden');
@@ -966,114 +986,118 @@ function updateGlobalPreview() {
     return;
   }
 
-  const dtLocal = buildDatetimeLocal(date, hour, min, ampm);
-  document.getElementById('upload_time').value = dtLocal;
-  previewText.textContent = formatPreview(date, hour, min, ampm);
+  // Clamp values
+  const h = Math.max(0, Math.min(23, hour));
+  const m = Math.max(0, Math.min(59, min));
+
+  const utcDate = buildUTCDate(date, h, m);
+  const istDate = utcToIST(utcDate);
+
+  document.getElementById('upload_time').value = buildDatetimeLocal(date, h, m);
+  document.getElementById('g_preview_text').textContent = `UTC ${fmtDatetime(utcDate)}`;
+  document.getElementById('g_preview_ist').textContent  = `${fmtDatetime(istDate)}`;
   preview.classList.remove('hidden');
   saveFormState();
 }
 
 function setGlobalNow() {
   const now = new Date();
-  now.setHours(now.getHours() + 1);
-  const dateVal = now.toISOString().split('T')[0];
-  let h = now.getHours();
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-
+  now.setTime(now.getTime() + 3600000); // +1h
+  const dateVal = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}-${String(now.getUTCDate()).padStart(2,'0')}`;
   const dateEl = document.getElementById('g_date');
   [...dateEl.options].forEach(o => { if (o.value === dateVal) o.selected = true; });
-  document.getElementById('g_hour').value = h;
-  document.getElementById('g_min').value  = now.getMinutes();
-  document.getElementById('g_ampm').value = ampm;
+  document.getElementById('g_hour').value = now.getUTCHours();
+  document.getElementById('g_min').value  = now.getUTCMinutes();
   updateGlobalPreview();
 }
 
 function setGlobalTomorrow() {
   const tom = new Date();
-  tom.setDate(tom.getDate() + 1);
-  const dateVal = tom.toISOString().split('T')[0];
-
+  tom.setTime(tom.getTime() + 86400000);
+  const dateVal = `${tom.getUTCFullYear()}-${String(tom.getUTCMonth()+1).padStart(2,'0')}-${String(tom.getUTCDate()).padStart(2,'0')}`;
   const dateEl = document.getElementById('g_date');
   [...dateEl.options].forEach(o => { if (o.value === dateVal) o.selected = true; });
   document.getElementById('g_hour').value = 9;
   document.getElementById('g_min').value  = 0;
-  document.getElementById('g_ampm').value = 'AM';
   updateGlobalPreview();
 }
 
 function clearGlobalTime() {
-  document.getElementById('g_date').value = '';
+  const dateEl = document.getElementById('g_date');
+  if (dateEl) dateEl.value = '';
   document.getElementById('upload_time').value = '';
   document.getElementById('g_preview').classList.add('hidden');
   saveFormState();
 }
 
 // ═══════════════════════════════════════════════════════════
-// JOB CARD TIME PICKERS
+// JOB CARD TIME PICKERS — UTC
 // ═══════════════════════════════════════════════════════════
 function initJobPicker(jobId) {
   const dateEl = document.getElementById(`jd_date_${jobId}`);
   if (!dateEl || dateEl.options.length > 0) return;
   populateDateSelect(dateEl, '');
 
-  // Restore saved state for this job picker
   const saved = sessionStorage.getItem(`rf_job_${jobId}`);
   if (saved) {
     try {
       const s = JSON.parse(saved);
       [...dateEl.options].forEach(o => { if (o.value === s.date) o.selected = true; });
-      document.getElementById(`jd_hour_${jobId}`).value = s.hour || '12';
-      document.getElementById(`jd_min_${jobId}`).value  = s.min  || '0';
-      document.getElementById(`jd_ampm_${jobId}`).value = s.ampm || 'PM';
+      const hEl = document.getElementById(`jd_hour_${jobId}`);
+      const mEl = document.getElementById(`jd_min_${jobId}`);
+      if (hEl) hEl.value = s.hour ?? 12;
+      if (mEl) mEl.value = s.min  ?? 0;
+      updateJobPreview(jobId);
     } catch(e) {}
   }
 }
 
 function updateJobPreview(jobId) {
+  const dateEl = document.getElementById(`jd_date_${jobId}`);
+  const hourEl = document.getElementById(`jd_hour_${jobId}`);
+  const minEl  = document.getElementById(`jd_min_${jobId}`);
+  const istEl  = document.getElementById(`jd_ist_${jobId}`);
+
   const state = {
-    date: document.getElementById(`jd_date_${jobId}`)?.value || '',
-    hour: document.getElementById(`jd_hour_${jobId}`)?.value || '12',
-    min:  document.getElementById(`jd_min_${jobId}`)?.value  || '0',
-    ampm: document.getElementById(`jd_ampm_${jobId}`)?.value || 'PM',
+    date: dateEl?.value || '',
+    hour: parseInt(hourEl?.value) || 0,
+    min:  parseInt(minEl?.value)  || 0,
   };
   sessionStorage.setItem(`rf_job_${jobId}`, JSON.stringify(state));
+
+  if (istEl && state.date) {
+    const h = Math.max(0, Math.min(23, state.hour));
+    const m = Math.max(0, Math.min(59, state.min));
+    const utcDate = buildUTCDate(state.date, h, m);
+    const istDate = utcToIST(utcDate);
+    istEl.textContent = `IST: ${fmtDatetime(istDate)}`;
+  } else if (istEl) {
+    istEl.textContent = '';
+  }
 }
 
 function setJobNow(jobId) {
   const now = new Date();
-  now.setHours(now.getHours() + 1);
-  const dateVal = now.toISOString().split('T')[0];
-  let h = now.getHours();
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-
+  now.setTime(now.getTime() + 3600000);
+  const dateVal = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}-${String(now.getUTCDate()).padStart(2,'0')}`;
   const dateEl = document.getElementById(`jd_date_${jobId}`);
-  if (dateEl) {
-    [...dateEl.options].forEach(o => { if (o.value === dateVal) o.selected = true; });
-  }
-  const hourEl = document.getElementById(`jd_hour_${jobId}`);
-  const minEl  = document.getElementById(`jd_min_${jobId}`);
-  const ampmEl = document.getElementById(`jd_ampm_${jobId}`);
-  if (hourEl) hourEl.value = h;
-  if (minEl)  minEl.value  = now.getMinutes();
-  if (ampmEl) ampmEl.value = ampm;
+  if (dateEl) [...dateEl.options].forEach(o => { if (o.value === dateVal) o.selected = true; });
+  const hEl = document.getElementById(`jd_hour_${jobId}`);
+  const mEl = document.getElementById(`jd_min_${jobId}`);
+  if (hEl) hEl.value = now.getUTCHours();
+  if (mEl) mEl.value = now.getUTCMinutes();
   updateJobPreview(jobId);
 }
 
 async function submitJobUploadTime(jobId) {
   const dateEl = document.getElementById(`jd_date_${jobId}`);
-  const hour = document.getElementById(`jd_hour_${jobId}`)?.value || '12';
-  const min  = document.getElementById(`jd_min_${jobId}`)?.value  || '0';
-  const ampm = document.getElementById(`jd_ampm_${jobId}`)?.value || 'PM';
+  const hour = Math.max(0, Math.min(23, parseInt(document.getElementById(`jd_hour_${jobId}`)?.value) || 0));
+  const min  = Math.max(0, Math.min(59, parseInt(document.getElementById(`jd_min_${jobId}`)?.value)  || 0));
   const dateVal = dateEl?.value || '';
 
-  if (!dateVal) {
-    alert('Please select a date first.');
-    return;
-  }
+  if (!dateVal) { alert('Please select a date first.'); return; }
 
-  const dtLocal = buildDatetimeLocal(dateVal, hour, min, ampm);
+  const dtLocal = buildDatetimeLocal(dateVal, hour, min);
   const formData = new FormData();
   formData.append('upload_time', dtLocal);
 
@@ -1265,16 +1289,15 @@ function buildJobPickerHTML(id) {
   wrap.className = 'job-upload-picker';
   wrap.id = `picker-${id}`;
   wrap.innerHTML = `
-    <div class="job-dt-row">
-      <select class="date-sel" id="jd_date_${id}" onchange="updateJobPreview('${id}')"></select>
-      <input type="number" class="hour-inp" id="jd_hour_${id}" min="1" max="12" value="12" onchange="updateJobPreview('${id}')" oninput="updateJobPreview('${id}')"/>
-      <span style="color:var(--text3);font-size:11px">:</span>
-      <input type="number" class="min-inp" id="jd_min_${id}" min="0" max="59" value="0" onchange="updateJobPreview('${id}')" oninput="updateJobPreview('${id}')"/>
-      <select class="ampm-sel" id="jd_ampm_${id}" onchange="updateJobPreview('${id}')">
-        <option value="AM">AM</option>
-        <option value="PM">PM</option>
-      </select>
-      <button type="button" class="job-now-btn" onclick="setJobNow('${id}')">+1h</button>
+    <div>
+      <div class="job-dt-row">
+        <select class="date-sel" id="jd_date_${id}" onchange="updateJobPreview('${id}')"></select>
+        <input type="number" class="hour-inp" id="jd_hour_${id}" min="0" max="23" value="12" placeholder="HH" onchange="updateJobPreview('${id}')" oninput="updateJobPreview('${id}')"/>
+        <span style="color:var(--text3);font-size:11px">:</span>
+        <input type="number" class="min-inp" id="jd_min_${id}" min="0" max="59" value="0" placeholder="MM" onchange="updateJobPreview('${id}')" oninput="updateJobPreview('${id}')"/>
+        <button type="button" class="job-now-btn" onclick="setJobNow('${id}')">+1h UTC</button>
+      </div>
+      <div id="jd_ist_${id}" style="font-size:10px;color:var(--warn-bright);font-family:'DM Mono',monospace;margin-top:3px;"></div>
     </div>
     <button class="btn btn-sm btn-time" onclick="submitJobUploadTime('${id}')">📅 Set</button>
   `;
