@@ -4,104 +4,608 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>ReelForge — Content Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0d0d0f;
-    --card: #16161a;
-    --border: #2a2a30;
-    --accent: #6c63ff;
-    --accent2: #ff6584;
-    --text: #e8e8f0;
-    --muted: #6b6b80;
-    --success: #4ade80;
-    --warn: #facc15;
-    --fail: #f87171;
+    --bg: #080a0e;
+    --bg2: #0d1117;
+    --card: #111318;
+    --card2: #161b22;
+    --border: #21262d;
+    --border2: #30363d;
+    --accent: #58a6ff;
+    --accent-glow: rgba(88,166,255,0.15);
+    --accent2: #f78166;
+    --accent3: #3fb950;
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --text3: #6e7681;
+    --success: #3fb950;
+    --warn: #d29922;
+    --warn-bright: #f0c042;
+    --fail: #f85149;
+    --purple: #bc8cff;
+    --teal: #39d353;
+    --cyan: #56d364;
   }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', system-ui, sans-serif;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(88,166,255,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 30% at 90% 80%, rgba(247,129,102,0.04) 0%, transparent 50%);
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
 
   /* ── Layout ── */
-  .container { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
-  header { padding: 24px 0 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 14px; }
-  header .logo { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
-  header .logo span { color: var(--accent); }
-  header .badge { background: var(--accent); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
-  .layout { display: grid; grid-template-columns: 1fr 420px; gap: 24px; padding: 28px 0; }
-  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .container { max-width: 1360px; margin: 0 auto; padding: 0 28px; }
+
+  header {
+    padding: 20px 0 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .logo span { color: var(--accent); }
+  .badge {
+    background: rgba(88,166,255,0.12);
+    color: var(--accent);
+    border: 1px solid rgba(88,166,255,0.3);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .header-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .server-time-display {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text3);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .server-time-display .time-val {
+    color: var(--text2);
+  }
+
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--text3);
+  }
+  .refresh-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(0.8)} }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 460px;
+    gap: 20px;
+    padding: 24px 0 40px;
+    align-items: start;
+  }
+  @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
 
   /* ── Cards ── */
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
-  .card-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 18px; }
-
-  /* ── Form ── */
-  textarea, input[type=datetime-local], input[type=text] {
-    width: 100%; background: #0d0d0f; border: 1px solid var(--border);
-    color: var(--text); border-radius: 8px; padding: 10px 14px;
-    font-size: 13px; font-family: 'JetBrains Mono', monospace; outline: none;
-    transition: border-color .2s;
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px;
   }
-  textarea:focus, input:focus { border-color: var(--accent); }
-  #content_md { height: 420px; resize: vertical; line-height: 1.6; }
-  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; margin-top: 16px; }
-  label:first-of-type { margin-top: 0; }
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-icon {
+    width: 28px; height: 28px;
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .card-icon.blue { background: rgba(88,166,255,0.12); }
+  .card-icon.orange { background: rgba(247,129,102,0.12); }
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.2px;
+  }
+  .card-subtitle { font-size: 11px; color: var(--text3); margin-top: 1px; }
 
-  .btn { display: inline-flex; align-items: center; gap: 7px; padding: 10px 20px; border-radius: 8px;
-         font-weight: 600; font-size: 13px; border: none; cursor: pointer; transition: opacity .15s; }
-  .btn:hover { opacity: .85; }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
-  .btn-retry { background: #2a2a40; color: var(--warn); }
-  .btn-del { background: #2a1a1a; color: var(--fail); }
-  .btn-time { background: #1a2a2a; color: #5eead4; }
+  /* ── Form elements ── */
+  .field { margin-bottom: 16px; }
+  .field:last-of-type { margin-bottom: 0; }
+
+  .field-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 7px;
+  }
+  .field-label span {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+  .field-hint { font-size: 10px; color: var(--text3); }
+
+  textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    font-family: 'DM Mono', monospace;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+    resize: vertical;
+    line-height: 1.65;
+  }
+  textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  #content_md { height: 400px; }
+
+  /* ── Datetime picker ── */
+  .dt-picker {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .dt-part {
+    position: relative;
+  }
+
+  .dt-part select, .dt-part input[type=number] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 7px;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .dt-part select:focus, .dt-part input[type=number]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  .dt-part-label {
+    font-size: 10px;
+    color: var(--text3);
+    margin-bottom: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .dt-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 8px;
+    align-items: end;
+  }
+
+  .dt-row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    align-items: end;
+    margin-top: 8px;
+  }
+
+  .now-btn {
+    background: rgba(88,166,255,0.1);
+    border: 1px solid rgba(88,166,255,0.25);
+    color: var(--accent);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 11px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .now-btn:hover {
+    background: rgba(88,166,255,0.2);
+    border-color: rgba(88,166,255,0.4);
+  }
+
+  .dt-preview {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--warn-bright);
+    background: rgba(210,153,34,0.08);
+    border: 1px solid rgba(210,153,34,0.2);
+    border-radius: 6px;
+    padding: 7px 11px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dt-preview.hidden { display: none; }
+  .dt-preview .dt-icon { opacity: 0.7; }
+
+  /* hidden actual datetime-local input for form submission */
+  input[type=datetime-local].hidden-input {
+    display: none;
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    border: none;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #0d1117;
+    box-shadow: 0 0 20px rgba(88,166,255,0.25);
+  }
+  .btn-primary:hover { box-shadow: 0 0 28px rgba(88,166,255,0.4); }
+
+  .btn-sm {
+    padding: 5px 11px;
+    font-size: 11px;
+    border-radius: 6px;
+    font-weight: 600;
+  }
+  .btn-retry {
+    background: rgba(210,153,34,0.12);
+    color: var(--warn-bright);
+    border: 1px solid rgba(210,153,34,0.25);
+  }
+  .btn-retry:hover { background: rgba(210,153,34,0.2); }
+
+  .btn-del {
+    background: rgba(248,81,73,0.1);
+    color: var(--fail);
+    border: 1px solid rgba(248,81,73,0.2);
+  }
+  .btn-del:hover { background: rgba(248,81,73,0.2); }
+
+  .btn-time {
+    background: rgba(63,185,80,0.12);
+    color: var(--success);
+    border: 1px solid rgba(63,185,80,0.25);
+  }
+  .btn-time:hover { background: rgba(63,185,80,0.2); }
 
   /* ── Status badges ── */
-  .status { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
-  .status-pending   { background: #2a2a20; color: var(--warn); }
-  .status-rendering { background: #1a2040; color: #818cf8; }
-  .status-rendered  { background: #1a2a20; color: #4ade80; }
-  .status-uploading { background: #1a2030; color: #38bdf8; }
-  .status-done      { background: #0f2a0f; color: var(--success); }
-  .status-failed    { background: #2a0f0f; color: var(--fail); }
-
-  /* ── Jobs table ── */
-  .jobs-list { display: flex; flex-direction: column; gap: 10px; }
-  .job-card { background: #0d0d0f; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
-  .job-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .job-name { font-size: 14px; font-weight: 600; flex: 1; }
-  .job-meta { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.7; }
-  .job-meta a { color: var(--accent); text-decoration: none; }
-  .job-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
-  .job-err { font-size: 11px; color: var(--fail); margin-top: 6px; background: #1a0808; padding: 6px 10px; border-radius: 6px; word-break: break-all; }
-
-  /* ── Upload time inline form ── */
-  .upload-form { display: flex; gap: 6px; align-items: center; }
-  .upload-form input { width: 190px; padding: 5px 10px; font-size: 12px; font-family: system-ui; }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    font-family: 'DM Mono', monospace;
+  }
+  .status::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .status-pending   { background: rgba(210,153,34,0.12); color: var(--warn-bright); border: 1px solid rgba(210,153,34,0.2); }
+  .status-rendering { background: rgba(188,140,255,0.12); color: var(--purple); border: 1px solid rgba(188,140,255,0.2); animation: statusPulse 1.5s infinite; }
+  .status-rendered  { background: rgba(63,185,80,0.12); color: var(--success); border: 1px solid rgba(63,185,80,0.2); }
+  .status-uploading { background: rgba(88,166,255,0.12); color: var(--accent); border: 1px solid rgba(88,166,255,0.2); animation: statusPulse 1.5s infinite; }
+  .status-done      { background: rgba(63,185,80,0.15); color: #56d364; border: 1px solid rgba(63,185,80,0.3); }
+  .status-failed    { background: rgba(248,81,73,0.12); color: var(--fail); border: 1px solid rgba(248,81,73,0.2); }
+  @keyframes statusPulse { 0%,100%{opacity:1} 50%{opacity:.6} }
 
   /* ── Stats bar ── */
-  .stats { display: flex; gap: 16px; flex-wrap: wrap; padding: 14px 0 4px; }
-  .stat { font-size: 12px; color: var(--muted); }
-  .stat span { font-weight: 700; color: var(--text); }
+  .stats {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .stat-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    border: 1px solid var(--border);
+    color: var(--text3);
+    background: var(--bg2);
+  }
+  .stat-pill .num {
+    font-weight: 700;
+    color: var(--text2);
+  }
+  .stat-pill.has-items { border-color: var(--border2); color: var(--text2); }
+  .stat-pill.has-items .num { color: var(--text); }
+
+  /* ── Job cards ── */
+  .jobs-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .job-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: border-color .2s;
+  }
+  .job-card:hover { border-color: var(--border2); }
+
+  .job-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .job-name {
+    font-size: 13px;
+    font-weight: 700;
+    flex: 1;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .job-meta {
+    font-size: 11px;
+    color: var(--text3);
+    margin-top: 8px;
+    line-height: 1.8;
+    font-family: 'DM Mono', monospace;
+  }
+  .job-meta a { color: var(--accent); text-decoration: none; }
+  .job-meta a:hover { text-decoration: underline; }
+
+  .job-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .job-meta-item { display: flex; align-items: center; gap: 4px; }
+  .job-meta-label { color: var(--text3); }
+  .job-meta-val { color: var(--text2); }
+
+  .job-err {
+    font-size: 11px;
+    color: var(--fail);
+    margin-top: 8px;
+    background: rgba(248,81,73,0.06);
+    border: 1px solid rgba(248,81,73,0.15);
+    padding: 7px 11px;
+    border-radius: 6px;
+    word-break: break-all;
+    font-family: 'DM Mono', monospace;
+    line-height: 1.5;
+  }
+
+  .job-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  /* ── Inline upload time picker for job cards ── */
+  .job-upload-picker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .job-dt-row {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .job-dt-row select, .job-dt-row input[type=number] {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 7px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .job-dt-row select:focus, .job-dt-row input[type=number]:focus {
+    border-color: var(--accent);
+  }
+
+  .job-dt-row select.date-sel { width: 110px; }
+  .job-dt-row input.hour-inp { width: 52px; }
+  .job-dt-row input.min-inp  { width: 52px; }
+  .job-dt-row select.ampm-sel { width: 60px; }
+
+  .job-now-btn {
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--text3);
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all .15s;
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+  }
+  .job-now-btn:hover { color: var(--accent); border-color: rgba(88,166,255,0.4); }
 
   /* ── Empty state ── */
-  .empty { text-align: center; padding: 48px 0; color: var(--muted); font-size: 14px; }
-  .empty .icon { font-size: 36px; margin-bottom: 10px; }
+  .empty {
+    text-align: center;
+    padding: 52px 24px;
+    color: var(--text3);
+  }
+  .empty .icon { font-size: 32px; margin-bottom: 12px; opacity: 0.6; }
+  .empty p { font-size: 13px; line-height: 1.6; }
+  .empty p strong { color: var(--text2); }
 
-  /* ── Live refresh indicator ── */
-  .refresh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success);
-                 display: inline-block; margin-right: 6px; animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  /* ── How it works ── */
+  .how-it-works {
+    margin-top: 14px;
+    padding: 16px 18px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .how-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .how-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+  .step-num {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: rgba(88,166,255,0.1);
+    border: 1px solid rgba(88,166,255,0.2);
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
 
-  .section-hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.6; }
+  /* ── Upload at display ── */
+  .upload-at-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(210,153,34,0.1);
+    border: 1px solid rgba(210,153,34,0.2);
+    color: var(--warn-bright);
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    font-weight: 600;
+  }
+
+  /* select arrow fix */
+  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%236e7681' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; padding-right: 24px !important; }
+
+  .divider { height: 1px; background: var(--border); margin: 12px 0; }
+
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+  input[type=number] { -moz-appearance: textfield; }
 </style>
 </head>
 <body>
 
 <div class="container">
   <header>
-    <div class="logo">Reel<span>Forge</span></div>
+    <div class="logo">
+      <div class="logo-icon">🎬</div>
+      Reel<span>Forge</span>
+    </div>
     <span class="badge">v1</span>
-    <div style="margin-left:auto; font-size:12px; color:var(--muted);">
-      <span class="refresh-dot"></span>Auto-refreshing
+
+    <div class="header-right">
+      <div class="server-time-display">
+        🕐 <span class="time-val" id="headerClock">--:--:--</span>
+      </div>
+      <div class="live-badge">
+        <span class="refresh-dot"></span>Live
+      </div>
     </div>
   </header>
 
@@ -110,103 +614,189 @@
     <!-- LEFT: Submit form -->
     <div>
       <div class="card">
-        <div class="card-title">📋 Paste Today's Content Script</div>
+        <div class="card-header">
+          <div class="card-icon blue">📋</div>
+          <div>
+            <div class="card-title">Content Script</div>
+            <div class="card-subtitle">Each # ReelName block becomes a separate job</div>
+          </div>
+        </div>
 
         <form method="POST" action="/submit" id="submitForm">
-          <label>content.md</label>
-          <textarea name="content_md" id="content_md" placeholder="# ReelName: your_reel_name
+          <!-- Hidden actual datetime-local that gets populated before submit -->
+          <input type="datetime-local" name="upload_time" id="upload_time" class="hidden-input"/>
+
+          <div class="field">
+            <div class="field-label">
+              <span>content.md</span>
+              <span class="field-hint" id="charCount">0 chars</span>
+            </div>
+            <textarea name="content_md" id="content_md" placeholder="# ReelName: stoic_discipline
 
 ## Hook:
-Your hook line here.
+Most people quit when it gets hard.
 
 ## Conflict:
-Line 1.
-Line 2.
+They think motivation is the answer.
+But motivation is a feeling — it fades.
 
 ## Shift:
-Line 1.
-Line 2.
+Discipline is a decision.
+You show up anyway.
 
 ## Punch:
-Your punch line.
+The ones who win aren't more motivated. They're more committed.
 
 ## Engage:
-Type WORD if this hit.
+Type IRON if this hit.
 
 ---
 
 # ReelName: next_reel
 ..."></textarea>
+          </div>
 
-          <label>Global Upload Time (optional — applies to all reels in this batch)</label>
-          <input type="datetime-local" name="upload_time" id="upload_time"/>
-          <div class="section-hint">Leave blank to render-only (you can set per-reel upload times later).</div>
+          <div class="field" style="margin-top:16px;">
+            <div class="field-label">
+              <span>Global Upload Time</span>
+              <span class="field-hint">Optional — applies to all reels in this batch</span>
+            </div>
 
-          <div style="margin-top:20px;">
+            <div class="dt-row">
+              <div>
+                <div class="dt-part-label">Date</div>
+                <div class="dt-part">
+                  <select id="g_date" onchange="updateGlobalPreview()">
+                    <!-- populated by JS -->
+                  </select>
+                </div>
+              </div>
+              <div>
+                <div class="dt-part-label">Hour</div>
+                <div class="dt-part">
+                  <input type="number" id="g_hour" min="1" max="12" value="12" onchange="updateGlobalPreview()" oninput="updateGlobalPreview()"/>
+                </div>
+              </div>
+              <div>
+                <div class="dt-part-label">Min</div>
+                <div class="dt-part">
+                  <input type="number" id="g_min" min="0" max="59" value="0" onchange="updateGlobalPreview()" oninput="updateGlobalPreview()"/>
+                </div>
+              </div>
+              <div>
+                <div class="dt-part-label">AM/PM</div>
+                <div class="dt-part">
+                  <select id="g_ampm" onchange="updateGlobalPreview()">
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+              <button type="button" class="now-btn" onclick="setGlobalNow()">⚡ Now +1h</button>
+              <button type="button" class="now-btn" onclick="setGlobalTomorrow()">🌅 Tomorrow 9 AM</button>
+              <button type="button" class="now-btn" onclick="clearGlobalTime()" style="color:var(--text3);">✕ Clear</button>
+            </div>
+
+            <div class="dt-preview hidden" id="g_preview">
+              <span class="dt-icon">📅</span>
+              <span id="g_preview_text"></span>
+            </div>
+          </div>
+
+          <div style="margin-top:20px; display:flex; align-items:center; gap:12px;">
             <button type="submit" class="btn btn-primary" id="submitBtn">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               Queue Reels
             </button>
+            <span style="font-size:11px; color:var(--text3);" id="submitHint"></span>
           </div>
         </form>
       </div>
 
-      <div style="margin-top:16px; padding:14px 18px; background:var(--card); border:1px solid var(--border); border-radius:10px; font-size:12px; color:var(--muted); line-height:1.8;">
-        <strong style="color:var(--text);">How it works</strong><br>
-        1. Paste your <code>content.md</code> above — each <code># ReelName</code> becomes a separate job.<br>
-        2. Reels are rendered one at a time in the background (no crashes block other reels).<br>
-        3. Set an upload time per reel — the scheduler uploads to YouTube automatically.<br>
-        4. Failed jobs can be retried individually.
+      <div class="how-it-works">
+        <div style="font-size:12px; font-weight:700; color:var(--text2);">How it works</div>
+        <div class="how-steps">
+          <div class="how-step"><div class="step-num">1</div><div>Paste your <code style="font-family:'DM Mono',monospace;color:var(--accent);font-size:11px">content.md</code> — each <code style="font-family:'DM Mono',monospace;color:var(--accent);font-size:11px"># ReelName</code> becomes a separate job</div></div>
+          <div class="how-step"><div class="step-num">2</div><div>Reels render one at a time in the background — no crashes block other reels</div></div>
+          <div class="how-step"><div class="step-num">3</div><div>Set an upload time per reel — the scheduler uploads to YouTube automatically</div></div>
+          <div class="how-step"><div class="step-num">4</div><div>Failed jobs can be retried individually without re-queuing the whole batch</div></div>
+        </div>
       </div>
     </div>
 
     <!-- RIGHT: Job queue -->
     <div>
       <div class="card">
-        <div class="card-title">🎬 Job Queue</div>
-
-        {% set counts = {"pending":0,"rendering":0,"rendered":0,"uploading":0,"done":0,"failed":0} %}
-        {% for job in jobs %}{% set _ = counts.update({job.status: counts[job.status]+1}) %}{% endfor %}
-
-        <div class="stats">
-          <div class="stat">Pending <span>{{ counts["pending"] }}</span></div>
-          <div class="stat">Rendering <span>{{ counts["rendering"] }}</span></div>
-          <div class="stat">Rendered <span>{{ counts["rendered"] }}</span></div>
-          <div class="stat">Done <span>{{ counts["done"] }}</span></div>
-          <div class="stat">Failed <span>{{ counts["failed"] }}</span></div>
+        <div class="card-header">
+          <div class="card-icon orange">🎞️</div>
+          <div>
+            <div class="card-title">Job Queue</div>
+            <div class="card-subtitle" id="queueSubtitle">No jobs yet</div>
+          </div>
         </div>
 
-        <div style="margin-top:16px;">
+        <div class="stats" id="statsBar">
+          <div class="stat-pill" data-status="pending">Pending <span class="num">{{ counts["pending"] }}</span></div>
+          <div class="stat-pill" data-status="rendering">Rendering <span class="num">{{ counts["rendering"] }}</span></div>
+          <div class="stat-pill" data-status="rendered">Rendered <span class="num">{{ counts["rendered"] }}</span></div>
+          <div class="stat-pill" data-status="uploading">Uploading <span class="num">{{ counts["uploading"] }}</span></div>
+          <div class="stat-pill" data-status="done">Done <span class="num">{{ counts["done"] }}</span></div>
+          <div class="stat-pill" data-status="failed">Failed <span class="num">{{ counts["failed"] }}</span></div>
+        </div>
+
+        <div id="jobsContainer">
           {% if not jobs %}
-          <div class="empty">
+          <div class="empty" id="emptyState">
             <div class="icon">🎞️</div>
-            No jobs yet. Paste your script to get started.
+            <p>No jobs yet.<br><strong>Paste your script</strong> on the left to get started.</p>
           </div>
           {% else %}
-          <div class="jobs-list">
+          <div class="jobs-list" id="jobsList">
             {% for job in jobs %}
-            <div class="job-card" id="job-{{ job.id }}">
+            <div class="job-card" id="job-{{ job.id }}" data-status="{{ job.status }}">
               <div class="job-top">
                 <div class="job-name">{{ job.reel_name }}</div>
                 <span class="status status-{{ job.status }}">{{ job.status }}</span>
               </div>
 
               <div class="job-meta">
-                Batch: <code>{{ job.batch_id }}</code> &nbsp;·&nbsp; #{{ job.id }}<br>
-                Created: {{ job.created_at }}<br>
+                <div class="job-meta-row">
+                  <div class="job-meta-item">
+                    <span class="job-meta-label">Batch</span>
+                    <span class="job-meta-val">{{ job.batch_id[:8] }}…</span>
+                  </div>
+                  <div class="job-meta-item">
+                    <span class="job-meta-label">#</span>
+                    <span class="job-meta-val">{{ job.id }}</span>
+                  </div>
+                  <div class="job-meta-item">
+                    <span class="job-meta-label">Created</span>
+                    <span class="job-meta-val">{{ job.created_at }}</span>
+                  </div>
+                </div>
+
                 {% if job.upload_time %}
-                Upload at: <strong style="color:var(--warn)">{{ job.upload_time }}</strong><br>
+                <div style="margin-top:6px;">
+                  <span class="upload-at-badge">📅 {{ job.upload_time }}</span>
+                </div>
                 {% endif %}
+
                 {% if job.yt_video_id %}
-                YouTube: <a href="https://youtu.be/{{ job.yt_video_id }}" target="_blank">youtu.be/{{ job.yt_video_id }}</a><br>
+                <div style="margin-top:4px;">
+                  🔗 <a href="https://youtu.be/{{ job.yt_video_id }}" target="_blank">youtu.be/{{ job.yt_video_id }}</a>
+                </div>
                 {% endif %}
+
                 {% if job.output_path %}
-                File: <code>{{ job.output_path }}</code>
+                <div style="margin-top:4px; color:var(--text3);">📁 {{ job.output_path }}</div>
                 {% endif %}
               </div>
 
               {% if job.error_msg %}
-              <div class="job-err">⚠️ {{ job.error_msg }}</div>
+              <div class="job-err">⚠ {{ job.error_msg }}</div>
               {% endif %}
 
               <div class="job-actions">
@@ -214,11 +804,21 @@ Type WORD if this hit.
                 <button class="btn btn-sm btn-retry" onclick="retryJob('{{ job.id }}')">↩ Retry</button>
                 {% endif %}
 
-                {% if job.status in ["rendered"] %}
-                <form class="upload-form" onsubmit="setUploadTime(event, '{{ job.id }}')">
-                  <input type="datetime-local" name="upload_time" required placeholder="Schedule upload"/>
-                  <button type="submit" class="btn btn-sm btn-time">📅 Set</button>
-                </form>
+                {% if job.status == "rendered" %}
+                <div class="job-upload-picker" id="picker-{{ job.id }}">
+                  <div class="job-dt-row">
+                    <select class="date-sel" id="jd_date_{{ job.id }}" onchange="updateJobPreview('{{ job.id }}')"></select>
+                    <input type="number" class="hour-inp" id="jd_hour_{{ job.id }}" min="1" max="12" value="12" onchange="updateJobPreview('{{ job.id }}')" oninput="updateJobPreview('{{ job.id }}')"/>
+                    <span style="color:var(--text3);font-size:11px">:</span>
+                    <input type="number" class="min-inp" id="jd_min_{{ job.id }}" min="0" max="59" value="0" onchange="updateJobPreview('{{ job.id }}')" oninput="updateJobPreview('{{ job.id }}')"/>
+                    <select class="ampm-sel" id="jd_ampm_{{ job.id }}" onchange="updateJobPreview('{{ job.id }}')">
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                    <button type="button" class="job-now-btn" onclick="setJobNow('{{ job.id }}')">+1h</button>
+                  </div>
+                  <button class="btn btn-sm btn-time" onclick="submitJobUploadTime('{{ job.id }}')">📅 Set</button>
+                </div>
                 {% endif %}
 
                 <button class="btn btn-sm btn-del" onclick="deleteJob('{{ job.id }}')">✕</button>
@@ -235,52 +835,301 @@ Type WORD if this hit.
 </div>
 
 <script>
-// ── Save form state to sessionStorage on every keystroke ──
+// ═══════════════════════════════════════════════════════════
+// CLOCK
+// ═══════════════════════════════════════════════════════════
+function tickClock() {
+  const now = new Date();
+  document.getElementById('headerClock').textContent =
+    now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+// ═══════════════════════════════════════════════════════════
+// DATE DROPDOWN POPULATION
+// ═══════════════════════════════════════════════════════════
+function getNextDays(n) {
+  const days = [];
+  const now = new Date();
+  for (let i = 0; i < n; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() + i);
+    const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const val = d.toISOString().split('T')[0]; // YYYY-MM-DD
+    days.push({ label, val });
+  }
+  return days;
+}
+
+function populateDateSelect(selectEl, selectedVal) {
+  const days = getNextDays(14);
+  selectEl.innerHTML = '';
+  // Add "No date" option for global picker
+  if (selectEl.id === 'g_date') {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = '— none —';
+    selectEl.appendChild(opt);
+  }
+  days.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.val;
+    opt.textContent = d.label;
+    if (selectedVal && d.val === selectedVal) opt.selected = true;
+    selectEl.appendChild(opt);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// SESSIONstorage SAVE / RESTORE
+// ═══════════════════════════════════════════════════════════
 const contentEl = document.getElementById('content_md');
-const timeEl    = document.getElementById('upload_time');
 
 function saveFormState() {
   sessionStorage.setItem('rf_content', contentEl.value);
-  sessionStorage.setItem('rf_time',    timeEl.value);
+  // Save global time picker state
+  const state = {
+    date: document.getElementById('g_date')?.value || '',
+    hour: document.getElementById('g_hour')?.value || '12',
+    min:  document.getElementById('g_min')?.value  || '0',
+    ampm: document.getElementById('g_ampm')?.value || 'PM',
+  };
+  sessionStorage.setItem('rf_time_state', JSON.stringify(state));
 }
 
 function restoreFormState() {
   const c = sessionStorage.getItem('rf_content');
-  const t = sessionStorage.getItem('rf_time');
   if (c) contentEl.value = c;
-  if (t) timeEl.value    = t;
+  updateCharCount();
+
+  const ts = sessionStorage.getItem('rf_time_state');
+  if (ts) {
+    try {
+      const s = JSON.parse(ts);
+      const dateEl = document.getElementById('g_date');
+      if (dateEl && s.date) {
+        // find and select the right option
+        [...dateEl.options].forEach(o => { if (o.value === s.date) o.selected = true; });
+      }
+      if (s.hour) document.getElementById('g_hour').value = s.hour;
+      if (s.min)  document.getElementById('g_min').value  = s.min;
+      if (s.ampm) document.getElementById('g_ampm').value = s.ampm;
+      updateGlobalPreview();
+    } catch(e) {}
+  }
 }
 
-contentEl.addEventListener('input', saveFormState);
-timeEl.addEventListener('change', saveFormState);
-restoreFormState();
+contentEl.addEventListener('input', () => { saveFormState(); updateCharCount(); });
+['g_date','g_hour','g_min','g_ampm'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', saveFormState);
+});
 
-// ── Status class map ──
-const STATUS_CLASSES = ['pending','rendering','rendered','uploading','done','failed'];
+function updateCharCount() {
+  const len = contentEl.value.length;
+  const reels = (contentEl.value.match(/^# ReelName:/gm) || []).length;
+  document.getElementById('charCount').textContent = len > 0
+    ? `${len} chars · ${reels} reel${reels !== 1 ? 's' : ''} detected`
+    : '0 chars';
+}
 
-// ── Update job queue in-place (no page reload) ──
+// ═══════════════════════════════════════════════════════════
+// GLOBAL TIME PICKER
+// ═══════════════════════════════════════════════════════════
+function buildDatetimeLocal(dateVal, hour, min, ampm) {
+  if (!dateVal) return '';
+  let h = parseInt(hour) % 12;
+  if (ampm === 'PM') h += 12;
+  const hh = String(h).padStart(2, '0');
+  const mm = String(parseInt(min)).padStart(2, '0');
+  return `${dateVal}T${hh}:${mm}`;
+}
+
+function formatPreview(dateVal, hour, min, ampm) {
+  if (!dateVal) return '';
+  const dt = new Date(buildDatetimeLocal(dateVal, hour, min, ampm));
+  return dt.toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
+}
+
+function updateGlobalPreview() {
+  const date = document.getElementById('g_date').value;
+  const hour = document.getElementById('g_hour').value;
+  const min  = document.getElementById('g_min').value;
+  const ampm = document.getElementById('g_ampm').value;
+  const preview = document.getElementById('g_preview');
+  const previewText = document.getElementById('g_preview_text');
+
+  if (!date) {
+    preview.classList.add('hidden');
+    document.getElementById('upload_time').value = '';
+    return;
+  }
+
+  const dtLocal = buildDatetimeLocal(date, hour, min, ampm);
+  document.getElementById('upload_time').value = dtLocal;
+  previewText.textContent = formatPreview(date, hour, min, ampm);
+  preview.classList.remove('hidden');
+  saveFormState();
+}
+
+function setGlobalNow() {
+  const now = new Date();
+  now.setHours(now.getHours() + 1);
+  const dateVal = now.toISOString().split('T')[0];
+  let h = now.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+
+  const dateEl = document.getElementById('g_date');
+  [...dateEl.options].forEach(o => { if (o.value === dateVal) o.selected = true; });
+  document.getElementById('g_hour').value = h;
+  document.getElementById('g_min').value  = now.getMinutes();
+  document.getElementById('g_ampm').value = ampm;
+  updateGlobalPreview();
+}
+
+function setGlobalTomorrow() {
+  const tom = new Date();
+  tom.setDate(tom.getDate() + 1);
+  const dateVal = tom.toISOString().split('T')[0];
+
+  const dateEl = document.getElementById('g_date');
+  [...dateEl.options].forEach(o => { if (o.value === dateVal) o.selected = true; });
+  document.getElementById('g_hour').value = 9;
+  document.getElementById('g_min').value  = 0;
+  document.getElementById('g_ampm').value = 'AM';
+  updateGlobalPreview();
+}
+
+function clearGlobalTime() {
+  document.getElementById('g_date').value = '';
+  document.getElementById('upload_time').value = '';
+  document.getElementById('g_preview').classList.add('hidden');
+  saveFormState();
+}
+
+// ═══════════════════════════════════════════════════════════
+// JOB CARD TIME PICKERS
+// ═══════════════════════════════════════════════════════════
+function initJobPicker(jobId) {
+  const dateEl = document.getElementById(`jd_date_${jobId}`);
+  if (!dateEl || dateEl.options.length > 0) return;
+  populateDateSelect(dateEl, '');
+
+  // Restore saved state for this job picker
+  const saved = sessionStorage.getItem(`rf_job_${jobId}`);
+  if (saved) {
+    try {
+      const s = JSON.parse(saved);
+      [...dateEl.options].forEach(o => { if (o.value === s.date) o.selected = true; });
+      document.getElementById(`jd_hour_${jobId}`).value = s.hour || '12';
+      document.getElementById(`jd_min_${jobId}`).value  = s.min  || '0';
+      document.getElementById(`jd_ampm_${jobId}`).value = s.ampm || 'PM';
+    } catch(e) {}
+  }
+}
+
+function updateJobPreview(jobId) {
+  const state = {
+    date: document.getElementById(`jd_date_${jobId}`)?.value || '',
+    hour: document.getElementById(`jd_hour_${jobId}`)?.value || '12',
+    min:  document.getElementById(`jd_min_${jobId}`)?.value  || '0',
+    ampm: document.getElementById(`jd_ampm_${jobId}`)?.value || 'PM',
+  };
+  sessionStorage.setItem(`rf_job_${jobId}`, JSON.stringify(state));
+}
+
+function setJobNow(jobId) {
+  const now = new Date();
+  now.setHours(now.getHours() + 1);
+  const dateVal = now.toISOString().split('T')[0];
+  let h = now.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+
+  const dateEl = document.getElementById(`jd_date_${jobId}`);
+  if (dateEl) {
+    [...dateEl.options].forEach(o => { if (o.value === dateVal) o.selected = true; });
+  }
+  const hourEl = document.getElementById(`jd_hour_${jobId}`);
+  const minEl  = document.getElementById(`jd_min_${jobId}`);
+  const ampmEl = document.getElementById(`jd_ampm_${jobId}`);
+  if (hourEl) hourEl.value = h;
+  if (minEl)  minEl.value  = now.getMinutes();
+  if (ampmEl) ampmEl.value = ampm;
+  updateJobPreview(jobId);
+}
+
+async function submitJobUploadTime(jobId) {
+  const dateEl = document.getElementById(`jd_date_${jobId}`);
+  const hour = document.getElementById(`jd_hour_${jobId}`)?.value || '12';
+  const min  = document.getElementById(`jd_min_${jobId}`)?.value  || '0';
+  const ampm = document.getElementById(`jd_ampm_${jobId}`)?.value || 'PM';
+  const dateVal = dateEl?.value || '';
+
+  if (!dateVal) {
+    alert('Please select a date first.');
+    return;
+  }
+
+  const dtLocal = buildDatetimeLocal(dateVal, hour, min, ampm);
+  const formData = new FormData();
+  formData.append('upload_time', dtLocal);
+
+  await fetch(`/jobs/${jobId}/set_upload_time`, { method: 'POST', body: formData });
+  sessionStorage.removeItem(`rf_job_${jobId}`);
+  refreshJobs();
+}
+
+// ═══════════════════════════════════════════════════════════
+// STATS UPDATE
+// ═══════════════════════════════════════════════════════════
+function updateStats(jobs) {
+  const counts = {pending:0, rendering:0, rendered:0, uploading:0, done:0, failed:0};
+  jobs.forEach(j => { if (counts[j.status] !== undefined) counts[j.status]++; });
+
+  document.querySelectorAll('.stat-pill').forEach(el => {
+    const status = el.dataset.status;
+    const numEl = el.querySelector('.num');
+    if (numEl) numEl.textContent = counts[status] || 0;
+    el.classList.toggle('has-items', (counts[status] || 0) > 0);
+  });
+
+  const total = jobs.length;
+  const subtitle = document.getElementById('queueSubtitle');
+  if (subtitle) {
+    subtitle.textContent = total === 0 ? 'No jobs yet' :
+      `${total} job${total !== 1 ? 's' : ''} · ${counts.done} done · ${counts.failed} failed`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// LIVE JOB REFRESH (DOM in-place, no reload)
+// ═══════════════════════════════════════════════════════════
 function refreshJobs() {
   fetch('/jobs')
     .then(r => r.json())
     .then(jobs => {
-      const list = document.querySelector('.jobs-list');
-      const emptyEl = document.querySelector('.empty');
+      const container = document.getElementById('jobsContainer');
+      let list = document.getElementById('jobsList');
 
-      // If no jobs at all
       if (jobs.length === 0) {
-        if (list) list.innerHTML = '<div class="empty"><div class="icon">🎞️</div>No jobs yet. Paste your script to get started.</div>';
+        container.innerHTML = `<div class="empty" id="emptyState"><div class="icon">🎞️</div><p>No jobs yet.<br><strong>Paste your script</strong> on the left to get started.</p></div>`;
         updateStats(jobs);
         return;
       }
 
-      // If jobs-list doesn't exist yet (was empty state), reload once to get proper HTML
-      if (!list) { window.location.reload(); return; }
+      if (!list) {
+        // Was empty, now has jobs — build list fresh
+        container.innerHTML = '<div class="jobs-list" id="jobsList"></div>';
+        list = document.getElementById('jobsList');
+      }
 
-      // Update existing cards & add new ones
-      const renderedIds = new Set([...list.querySelectorAll('.job-card')].map(el => el.id.split('-')[1]));
+      const renderedIds = new Set([...list.querySelectorAll('.job-card')].map(el => el.id.replace('job-', '')));
       const incomingIds = new Set(jobs.map(j => String(j.id)));
 
-      // Remove cards no longer in jobs
+      // Remove deleted
       renderedIds.forEach(id => {
         if (!incomingIds.has(id)) document.getElementById(`job-${id}`)?.remove();
       });
@@ -290,22 +1139,27 @@ function refreshJobs() {
         let card = document.getElementById(`job-${id}`);
 
         if (!card) {
-          // New job — reload to get full server-rendered HTML for it
-          window.location.reload();
+          // New card — build it
+          card = buildJobCard(job);
+          list.appendChild(card);
+          // Init picker if rendered
+          if (job.status === 'rendered') initJobPicker(id);
           return;
         }
 
-        // Update status badge only
+        const prevStatus = card.dataset.status;
+        if (prevStatus === job.status) return; // nothing changed
+
+        card.dataset.status = job.status;
+
+        // Update badge
         const badge = card.querySelector('.status');
         if (badge) {
-          const newClass = `status status-${job.status}`;
-          if (badge.className !== newClass) {
-            badge.className = newClass;
-            badge.textContent = job.status;
-          }
+          badge.className = `status status-${job.status}`;
+          badge.textContent = job.status;
         }
 
-        // Update error message
+        // Update error
         let errEl = card.querySelector('.job-err');
         if (job.error_msg) {
           if (!errEl) {
@@ -313,41 +1167,51 @@ function refreshJobs() {
             errEl.className = 'job-err';
             card.querySelector('.job-actions').before(errEl);
           }
-          errEl.textContent = `⚠️ ${job.error_msg}`;
-        } else if (errEl) {
-          errEl.remove();
-        }
+          errEl.textContent = `⚠ ${job.error_msg}`;
+        } else if (errEl) errEl.remove();
 
-        // Update action buttons based on new status
+        // Rebuild actions
         const actions = card.querySelector('.job-actions');
         if (actions) {
-          // Retry button
-          let retryBtn = actions.querySelector('.btn-retry');
-          if (['failed', 'pending'].includes(job.status)) {
-            if (!retryBtn) {
-              retryBtn = document.createElement('button');
-              retryBtn.className = 'btn btn-sm btn-retry';
-              retryBtn.textContent = '↩ Retry';
-              retryBtn.onclick = () => retryJob(id);
-              actions.prepend(retryBtn);
-            }
-          } else {
-            retryBtn?.remove();
+          actions.innerHTML = '';
+
+          if (['failed','pending'].includes(job.status)) {
+            const retryBtn = document.createElement('button');
+            retryBtn.className = 'btn btn-sm btn-retry';
+            retryBtn.textContent = '↩ Retry';
+            retryBtn.onclick = () => retryJob(id);
+            actions.appendChild(retryBtn);
           }
 
-          // Upload time form
-          let uploadForm = actions.querySelector('.upload-form');
           if (job.status === 'rendered') {
-            if (!uploadForm) {
-              uploadForm = document.createElement('form');
-              uploadForm.className = 'upload-form';
-              uploadForm.innerHTML = `<input type="datetime-local" name="upload_time" required/><button type="submit" class="btn btn-sm btn-time">📅 Set</button>`;
-              uploadForm.onsubmit = (e) => setUploadTime(e, id);
-              const delBtn = actions.querySelector('.btn-del');
-              actions.insertBefore(uploadForm, delBtn);
+            const picker = buildJobPickerHTML(id);
+            actions.appendChild(picker);
+          }
+
+          const delBtn = document.createElement('button');
+          delBtn.className = 'btn btn-sm btn-del';
+          delBtn.textContent = '✕';
+          delBtn.onclick = () => deleteJob(id);
+          actions.appendChild(delBtn);
+
+          if (job.status === 'rendered') initJobPicker(id);
+        }
+
+        // Update upload_time badge if changed
+        if (job.upload_time) {
+          let meta = card.querySelector('.job-meta');
+          if (meta) {
+            let badge = meta.querySelector('.upload-at-badge');
+            if (!badge) {
+              badge = document.createElement('div');
+              badge.style.marginTop = '6px';
+              const inner = document.createElement('span');
+              inner.className = 'upload-at-badge';
+              badge.appendChild(inner);
+              meta.appendChild(badge);
             }
-          } else {
-            uploadForm?.remove();
+            const inner = meta.querySelector('.upload-at-badge');
+            if (inner) inner.textContent = `📅 ${job.upload_time}`;
           }
         }
       });
@@ -357,18 +1221,73 @@ function refreshJobs() {
     .catch(() => {});
 }
 
-function updateStats(jobs) {
-  const counts = {pending:0, rendering:0, rendered:0, uploading:0, done:0, failed:0};
-  jobs.forEach(j => { if (counts[j.status] !== undefined) counts[j.status]++; });
-  document.querySelectorAll('.stat').forEach(el => {
-    const label = el.textContent.trim().toLowerCase().split(' ')[0];
-    if (counts[label] !== undefined) el.querySelector('span').textContent = counts[label];
-  });
+function buildJobCard(job) {
+  const id = String(job.id);
+  const div = document.createElement('div');
+  div.className = 'job-card';
+  div.id = `job-${id}`;
+  div.dataset.status = job.status;
+
+  div.innerHTML = `
+    <div class="job-top">
+      <div class="job-name">${escHtml(job.reel_name)}</div>
+      <span class="status status-${job.status}">${job.status}</span>
+    </div>
+    <div class="job-meta">
+      <div class="job-meta-row">
+        <div class="job-meta-item"><span class="job-meta-label">Batch</span><span class="job-meta-val">${escHtml(String(job.batch_id).slice(0,8))}…</span></div>
+        <div class="job-meta-item"><span class="job-meta-label">#</span><span class="job-meta-val">${escHtml(id)}</span></div>
+        <div class="job-meta-item"><span class="job-meta-label">Created</span><span class="job-meta-val">${escHtml(job.created_at)}</span></div>
+      </div>
+      ${job.upload_time ? `<div style="margin-top:6px"><span class="upload-at-badge">📅 ${escHtml(job.upload_time)}</span></div>` : ''}
+      ${job.yt_video_id ? `<div style="margin-top:4px">🔗 <a href="https://youtu.be/${escHtml(job.yt_video_id)}" target="_blank">youtu.be/${escHtml(job.yt_video_id)}</a></div>` : ''}
+      ${job.output_path ? `<div style="margin-top:4px;color:var(--text3)">📁 ${escHtml(job.output_path)}</div>` : ''}
+    </div>
+    ${job.error_msg ? `<div class="job-err">⚠ ${escHtml(job.error_msg)}</div>` : ''}
+    <div class="job-actions">
+      ${['failed','pending'].includes(job.status) ? `<button class="btn btn-sm btn-retry" onclick="retryJob('${id}')">↩ Retry</button>` : ''}
+      ${job.status === 'rendered' ? '' : ''}
+      <button class="btn btn-sm btn-del" onclick="deleteJob('${id}')">✕</button>
+    </div>
+  `;
+
+  if (job.status === 'rendered') {
+    const actions = div.querySelector('.job-actions');
+    const picker = buildJobPickerHTML(id);
+    actions.insertBefore(picker, actions.querySelector('.btn-del'));
+  }
+
+  return div;
 }
 
-setInterval(refreshJobs, 8000);
+function buildJobPickerHTML(id) {
+  const wrap = document.createElement('div');
+  wrap.className = 'job-upload-picker';
+  wrap.id = `picker-${id}`;
+  wrap.innerHTML = `
+    <div class="job-dt-row">
+      <select class="date-sel" id="jd_date_${id}" onchange="updateJobPreview('${id}')"></select>
+      <input type="number" class="hour-inp" id="jd_hour_${id}" min="1" max="12" value="12" onchange="updateJobPreview('${id}')" oninput="updateJobPreview('${id}')"/>
+      <span style="color:var(--text3);font-size:11px">:</span>
+      <input type="number" class="min-inp" id="jd_min_${id}" min="0" max="59" value="0" onchange="updateJobPreview('${id}')" oninput="updateJobPreview('${id}')"/>
+      <select class="ampm-sel" id="jd_ampm_${id}" onchange="updateJobPreview('${id}')">
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+      <button type="button" class="job-now-btn" onclick="setJobNow('${id}')">+1h</button>
+    </div>
+    <button class="btn btn-sm btn-time" onclick="submitJobUploadTime('${id}')">📅 Set</button>
+  `;
+  return wrap;
+}
 
-// ── Actions ──
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════════════════
+// ACTIONS
+// ═══════════════════════════════════════════════════════════
 async function retryJob(id) {
   await fetch(`/jobs/${id}/retry`, { method: 'POST' });
   refreshJobs();
@@ -380,22 +1299,44 @@ async function deleteJob(id) {
   document.getElementById(`job-${id}`)?.remove();
   const jobs = await fetch('/jobs').then(r => r.json());
   updateStats(jobs);
+  if (jobs.length === 0) {
+    document.getElementById('jobsContainer').innerHTML =
+      `<div class="empty"><div class="icon">🎞️</div><p>No jobs yet.<br><strong>Paste your script</strong> on the left to get started.</p></div>`;
+  }
 }
 
-async function setUploadTime(e, id) {
-  e.preventDefault();
-  const data = new FormData(e.target);
-  await fetch(`/jobs/${id}/set_upload_time`, { method: 'POST', body: data });
-  refreshJobs();
-}
-
-// ── Clear saved state on successful submit ──
+// ═══════════════════════════════════════════════════════════
+// SUBMIT
+// ═══════════════════════════════════════════════════════════
 document.getElementById('submitForm').addEventListener('submit', function() {
   sessionStorage.removeItem('rf_content');
-  sessionStorage.removeItem('rf_time');
-  document.getElementById('submitBtn').textContent = 'Queuing…';
-  document.getElementById('submitBtn').disabled = true;
+  sessionStorage.removeItem('rf_time_state');
+  const btn = document.getElementById('submitBtn');
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Queuing…';
+  btn.disabled = true;
+  btn.style.opacity = '0.7';
 });
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+(function init() {
+  // Populate global date select
+  const gDateEl = document.getElementById('g_date');
+  if (gDateEl) populateDateSelect(gDateEl, '');
+
+  // Populate all job pickers that are already in DOM (rendered status)
+  document.querySelectorAll('.job-card[data-status="rendered"]').forEach(card => {
+    const id = card.id.replace('job-', '');
+    initJobPicker(id);
+  });
+
+  // Restore form
+  restoreFormState();
+
+  // Start polling
+  setInterval(refreshJobs, 8000);
+})();
 </script>
 
 </body>
