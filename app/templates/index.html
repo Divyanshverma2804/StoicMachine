@@ -233,19 +233,40 @@ Type WORD if this hit.
 
   </div>
 </div>
-
 <script>
+// ── Save form state to sessionStorage on every keystroke ──
+const contentEl = document.getElementById('content_md');
+const timeEl    = document.getElementById('upload_time');
+
+function saveFormState() {
+  sessionStorage.setItem('rf_content', contentEl.value);
+  sessionStorage.setItem('rf_time',    timeEl.value);
+}
+
+function restoreFormState() {
+  const c = sessionStorage.getItem('rf_content');
+  const t = sessionStorage.getItem('rf_time');
+  if (c) contentEl.value = c;
+  if (t) timeEl.value    = t;
+}
+
+contentEl.addEventListener('input', saveFormState);
+timeEl.addEventListener('change', saveFormState);
+
+// Restore on page load
+restoreFormState();
+
 // ── Auto-refresh jobs every 8s ──
 function refreshJobs() {
+  // Don't reload if user is actively typing in the textarea
+  if (document.activeElement === contentEl) return;
+
   fetch('/jobs')
     .then(r => r.json())
     .then(jobs => {
-      // Only reload page if any status changed (avoid flicker)
       const current = document.querySelectorAll('.job-card');
-      // const ids = [...current].map(c => parseInt(c.id.split('-')[1]));      // CHANGED HERE BY DIVYANSH If job.id is UUID, this will break.
       const ids = [...current].map(c => c.id.split('-')[1]);
       const newIds = jobs.map(j => j.id);
-      // Simple check: if count changed or any status differs, reload
       const changed = jobs.some(j => {
         const el = document.getElementById(`job-${j.id}`);
         if (!el) return true;
@@ -253,6 +274,7 @@ function refreshJobs() {
         return badge && badge.className !== `status status-${j.status}`;
       });
       if (changed || ids.length !== newIds.length) {
+        saveFormState(); // Save before reload
         window.location.reload();
       }
     })
@@ -262,6 +284,7 @@ setInterval(refreshJobs, 8000);
 
 // ── Actions ──
 async function retryJob(id) {
+  saveFormState();
   await fetch(`/jobs/${id}/retry`, { method: 'POST' });
   window.location.reload();
 }
@@ -276,12 +299,15 @@ async function setUploadTime(e, id) {
   e.preventDefault();
   const form = e.target;
   const data = new FormData(form);
+  saveFormState();
   await fetch(`/jobs/${id}/set_upload_time`, { method: 'POST', body: data });
   window.location.reload();
 }
 
-// ── Submit guard ──
+// ── Clear saved state on successful submit ──
 document.getElementById('submitForm').addEventListener('submit', function() {
+  sessionStorage.removeItem('rf_content');
+  sessionStorage.removeItem('rf_time');
   document.getElementById('submitBtn').textContent = 'Queuing…';
   document.getElementById('submitBtn').disabled = true;
 });
