@@ -16,9 +16,13 @@ services:
       - ./music.mp3:/app/music.mp3:ro
       # Mount your YT client_secret.json
       - ./client_secret.json:/app/client_secret.json:ro
+      - chatterbox_cache:/root/.cache/huggingface
+      - ./voice_ref.wav:/app/voice_ref.wav:ro
     # Limit render concurrency — one job at a time is handled by the scheduler
     # but you can scale workers here later
     deploy:
       resources:
         limits:
           memory: 8g
+volumes:
+  chatterbox_cache:

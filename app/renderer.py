@@ -51,6 +51,20 @@ MAX_RETRY = int(os.environ.get("RENDER_MAX_RETRY", "3"))
 
 # ── helpers ──────────────────────────────────────────────
 
+# ── Chatterbox model — loaded once, reused for all reels ──
+_tts_model = None
+
+def _get_tts_model():
+    global _tts_model
+    if _tts_model is None:
+        import torch
+        from chatterbox.tts import ChatterboxTTS
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        log.info(f"[tts] Loading Chatterbox model on {device}...")
+        _tts_model = ChatterboxTTS.from_pretrained(device=device)
+        log.info("[tts] Model loaded and cached in memory")
+    return _tts_model
+
 def make_text_clip(text, font, font_size, color, method="label",
                    stroke_color=None, stroke_width=0, size=None):
     padded = text + "\n\n"
@@ -105,10 +119,45 @@ def contains_power_word(line: str) -> bool:
 #     )
 #     await communicate.save(filename)
 
+# async def _generate_voice(text: str, filename: str):
+#     from gtts import gTTS
+#     tts = gTTS(text=text, lang="en", slow=False)
+#     tts.save(filename)
+
+
 async def _generate_voice(text: str, filename: str):
-    from gtts import gTTS
-    tts = gTTS(text=text, lang="en", slow=False)
-    tts.save(filename)
+    import torchaudio as ta
+    import subprocess
+
+    model = _get_tts_model()
+
+    exaggeration = float(os.environ.get("TTS_EXAGGERATION", "0.5"))
+    cfg_weight   = float(os.environ.get("TTS_CFG_WEIGHT",   "0.3"))
+    ref_clip     = os.environ.get("TTS_VOICE_REF", "").strip()
+
+    kwargs = dict(exaggeration=exaggeration, cfg_weight=cfg_weight)
+    if ref_clip and os.path.exists(ref_clip):
+        kwargs["audio_prompt_path"] = ref_clip
+        log.info(f"[tts] Cloning voice from: {ref_clip}")
+    else:
+        log.info("[tts] No voice ref found — using default Chatterbox voice")
+
+    wav = model.generate(text, **kwargs)
+
+    wav_file = filename.replace(".mp3", ".wav")
+    ta.save(wav_file, wav, model.sr)
+
+    subprocess.run([
+        "ffmpeg", "-y", "-i", wav_file,
+        "-codec:a", "libmp3lame", "-qscale:a", "2",
+        filename
+    ], check=True, capture_output=True)
+
+    try:
+        os.remove(wav_file)
+    except OSError:
+        pass
+
 
 def build_outro_clips(voice_duration, total_duration):
     outro_start = voice_duration + SILENCE_BUFFER
