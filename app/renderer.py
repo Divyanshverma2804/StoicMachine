@@ -1,7 +1,17 @@
 """
 renderer.py — Reel rendering logic for ReelForge pipeline.
 Visual / timing logic ported from Viral-Reel-Script.py.
-TTS: Chatterbox (edge-tts removed — not available on VM).
+
+KEY UPGRADES vs previous version:
+  1. Real word-level timestamp sync via forced alignment (wav2vec2)
+     — subtitles snap to actual spoken word boundaries, not word-count estimates
+  2. Chatterbox TTS tuned for authoritative motivational delivery
+     — per-section emotion: hook/punch = high exaggeration, body = medium, engage = warm
+  3. Script preprocessed with pacing markers before TTS
+     — SCREAMING CAPS normalised so neural TTS reads them naturally
+     — ellipsis pause injected between lines for natural rhythm
+
+TTS: Chatterbox only (edge-tts not available on VM).
 Called per-job so one failure never blocks others.
 """
 
@@ -13,6 +23,7 @@ import random
 import json
 import logging
 import subprocess
+from dataclasses import dataclass
 
 from moviepy import (
     ImageClip,
@@ -28,7 +39,7 @@ from moviepy import (
 log = logging.getLogger("renderer")
 
 # =========================================
-# CONFIG  —  resolved from env so they work on the VM
+# CONFIG  —  resolved from env
 # =========================================
 
 STOCK_FOLDER   = os.environ.get("STOCK_FOLDER",   "stock")
@@ -65,9 +76,34 @@ POWER_WORDS = {
 
 MAX_RETRY = int(os.environ.get("RENDER_MAX_RETRY", "3"))
 
+# ── Chatterbox tuning per content section ─────────────────────────────────────
+# exaggeration: 0.0 = flat/robotic  →  1.0 = very dramatic
+# cfg_weight:   higher = more committed to the style/emotion
+#
+# hook / punch  → punchy, intense, commanding
+# conflict      → urgent, tense
+# shift         → calm authority — the "truth drop" moment
+# engage        → warm, inviting, slightly softer
+# default       → neutral authoritative baseline
+SECTION_TTS_PARAMS = {
+    "hook":     {"exaggeration": 0.75, "cfg_weight": 0.55},
+    "punch":    {"exaggeration": 0.80, "cfg_weight": 0.60},
+    "conflict": {"exaggeration": 0.65, "cfg_weight": 0.50},
+    "shift":    {"exaggeration": 0.45, "cfg_weight": 0.45},
+    "engage":   {"exaggeration": 0.50, "cfg_weight": 0.40},
+    "default":  {"exaggeration": 0.55, "cfg_weight": 0.45},
+}
+
+# ── Forced-alignment backend ───────────────────────────────────────────────────
+# "wav2vec2"  : best accuracy, ~400MB model on first run (recommended)
+# "whisper"   : good accuracy, uses faster-whisper
+# "fallback"  : word-count proportional — used if alignment fails
+ALIGN_BACKEND = os.environ.get("ALIGN_BACKEND", "wav2vec2")
+
 
 # =========================================
-# CHATTERBOX TTS  —  model loaded once, reused for all reels
+# CHATTERBOX TTS
+# model loaded once into memory, reused for every reel in the batch
 # =========================================
 
 _tts_model = None
@@ -79,59 +115,325 @@ def _get_tts_model():
         import torch
         from chatterbox.tts import ChatterboxTTS
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        log.info(f"[tts] Loading Chatterbox model on {device}...")
+        log.info(f"[tts] Loading Chatterbox on {device}...")
         _tts_model = ChatterboxTTS.from_pretrained(device=device)
-        log.info("[tts] Model loaded and cached in memory.")
+        log.info("[tts] Model ready and cached.")
     return _tts_model
 
 
-async def _generate_voice(text: str, filename: str):
+def _preprocess_for_tts(text: str) -> str:
+    """
+    Clean up script text before sending to Chatterbox.
+
+    - SCREAMING CAPS  → Title Case
+      Neural TTS reads ALL-CAPS the same as lowercase — they don't shout.
+      Title-casing lets the model focus on prosody instead of fighting the casing.
+    - Line breaks → '... ' (ellipsis micro-pause between lines)
+    """
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    cleaned = []
+    for line in lines:
+        # Normalize SCREAMING CAPS words to Title Case
+        line = re.sub(
+            r'\b([A-Z]{2,})\b',
+            lambda m: m.group(1).title(),
+            line,
+        )
+        cleaned.append(line)
+    return "... ".join(cleaned)
+
+
+def _generate_voice_for_section(text: str, wav_path: str, section_key: str = "default"):
+    """Synchronous Chatterbox call for one section. Saves .wav to wav_path."""
     import torchaudio as ta
 
-    model        = _get_tts_model()
-    exaggeration = float(os.environ.get("TTS_EXAGGERATION", "0.5"))
-    cfg_weight   = float(os.environ.get("TTS_CFG_WEIGHT",   "0.3"))
+    model  = _get_tts_model()
+    params = SECTION_TTS_PARAMS.get(section_key, SECTION_TTS_PARAMS["default"])
+
+    # env vars override defaults so you can tune without redeploying
+    exaggeration = float(os.environ.get("TTS_EXAGGERATION", str(params["exaggeration"])))
+    cfg_weight   = float(os.environ.get("TTS_CFG_WEIGHT",   str(params["cfg_weight"])))
     ref_clip     = os.environ.get("TTS_VOICE_REF", "").strip()
 
     kwargs = dict(exaggeration=exaggeration, cfg_weight=cfg_weight)
     if ref_clip and os.path.exists(ref_clip):
         kwargs["audio_prompt_path"] = ref_clip
-        log.info(f"[tts] Cloning voice from: {ref_clip}")
-    else:
-        log.info("[tts] No voice ref — using default Chatterbox voice.")
+        log.info(f"[tts] Voice cloning from: {ref_clip}")
 
-    wav      = model.generate(text, **kwargs)
-    wav_file = filename.replace(".mp3", ".wav")
-    ta.save(wav_file, wav, model.sr)
+    log.info(f"[tts] {section_key}: exag={exaggeration:.2f}  cfg={cfg_weight:.2f}")
+    wav = model.generate(text, **kwargs)
+    ta.save(wav_path, wav, model.sr)
 
+
+def _wav_to_mp3(wav_path: str, mp3_path: str):
     subprocess.run(
-        ["ffmpeg", "-y", "-i", wav_file,
-         "-codec:a", "libmp3lame", "-qscale:a", "2", filename],
+        ["ffmpeg", "-y", "-i", wav_path,
+         "-codec:a", "libmp3lame", "-qscale:a", "2", mp3_path],
         check=True, capture_output=True,
     )
 
-    try:
-        os.remove(wav_file)
-    except OSError:
-        pass
+
+def _concat_wavs(wav_paths: list, out_path: str):
+    """Concatenate multiple .wav files using ffmpeg concat demuxer."""
+    list_file = out_path + ".concat.txt"
+    with open(list_file, "w") as f:
+        for p in wav_paths:
+            f.write(f"file '{os.path.abspath(p)}'\n")
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+         "-i", list_file, "-c", "copy", out_path],
+        check=True, capture_output=True,
+    )
+    os.remove(list_file)
+
+
+async def generate_voice_sectioned(
+    sections: dict | None,
+    script:   str,
+    mp3_out:  str,
+) -> str:
+    """
+    Generate TTS audio with per-section emotion tuning.
+
+    If sections dict is available each section is rendered with its own
+    exaggeration / cfg_weight params then concatenated into one file.
+    Falls back to a single-pass render with default params if no sections.
+
+    Returns the path to the final .mp3.
+    """
+    tmp_dir = os.path.dirname(mp3_out)
+
+    if not sections:
+        processed = _preprocess_for_tts(script)
+        wav_path  = mp3_out.replace(".mp3", ".wav")
+        _generate_voice_for_section(processed, wav_path, "default")
+        _wav_to_mp3(wav_path, mp3_out)
+        try:
+            os.remove(wav_path)
+        except OSError:
+            pass
+        return mp3_out
+
+    # Per-section rendering
+    section_order = ["hook", "conflict", "shift", "punch", "engage"]
+    wav_parts     = []
+
+    for key in section_order:
+        text = sections.get(key, "").strip()
+        if not text:
+            continue
+        processed = _preprocess_for_tts(text)
+        wav_path  = os.path.join(
+            tmp_dir,
+            f"_sec_{key}_{os.path.basename(mp3_out)}.wav",
+        )
+        _generate_voice_for_section(processed, wav_path, key)
+        wav_parts.append(wav_path)
+        log.info(f"[tts] Section rendered: {key}")
+
+    combined_wav = mp3_out.replace(".mp3", "_combined.wav")
+    _concat_wavs(wav_parts, combined_wav)
+    _wav_to_mp3(combined_wav, mp3_out)
+
+    for p in wav_parts + [combined_wav]:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
+    return mp3_out
 
 
 # =========================================
-# HELPER  —  make a TextClip with \n\n bottom padding
+# FORCED ALIGNMENT — real word timestamps
+# =========================================
+
+@dataclass
+class WordStamp:
+    word:  str
+    start: float   # seconds into audio
+    end:   float   # seconds into audio
+
+
+def _align_wav2vec2(wav_path: str, transcript: str) -> list[WordStamp]:
+    """
+    torchaudio MMS forced alignment — best accuracy.
+    Requires torchaudio >= 2.1  (already on the VM for Chatterbox).
+    No extra model download needed beyond torchaudio's bundled MMS_300M.
+    """
+    import torch
+    import torchaudio
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    waveform, sample_rate = torchaudio.load(wav_path)
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+
+    bundle    = torchaudio.pipelines.MMS_300M
+    model_    = bundle.get_model().to(device)
+    tokenizer = bundle.get_tokenizer()
+    aligner   = bundle.get_aligner()
+
+    if sample_rate != bundle.sample_rate:
+        waveform = torchaudio.functional.resample(
+            waveform, sample_rate, bundle.sample_rate
+        )
+
+    with torch.inference_mode():
+        emission, _ = model_(waveform.to(device))
+
+    words = re.findall(r"[a-zA-Z']+", transcript.lower())
+    if not words:
+        return []
+
+    try:
+        token_spans = aligner(emission[0], tokenizer(words))
+    except Exception as e:
+        log.warning(f"[align] wav2vec2 failed: {e}")
+        return []
+
+    ratio  = waveform.shape[1] / emission.shape[1] / bundle.sample_rate
+    stamps = []
+    for i, spans in enumerate(token_spans):
+        stamps.append(WordStamp(
+            word=words[i],
+            start=spans[0].start * ratio,
+            end=spans[-1].end   * ratio,
+        ))
+    return stamps
+
+
+def _align_whisper(wav_path: str, transcript: str) -> list[WordStamp]:
+    """
+    faster-whisper with word_timestamps=True.
+    Install: pip install faster-whisper
+    """
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        log.warning("[align] faster-whisper not installed.")
+        return []
+
+    model = WhisperModel("base", device="auto", compute_type="int8")
+    segs, _ = model.transcribe(wav_path, word_timestamps=True, language="en")
+
+    stamps = []
+    for seg in segs:
+        for w in (seg.words or []):
+            clean = re.sub(r"[^a-zA-Z']", "", w.word).lower()
+            if clean:
+                stamps.append(WordStamp(word=clean, start=w.start, end=w.end))
+    return stamps
+
+
+def get_word_timestamps(wav_path: str, transcript: str) -> list[WordStamp]:
+    """Try configured alignment backend; return empty list on any failure."""
+    backend = ALIGN_BACKEND.lower()
+    try:
+        stamps = _align_wav2vec2(wav_path, transcript) if backend == "wav2vec2" \
+            else _align_whisper(wav_path, transcript) if backend == "whisper" \
+            else []
+
+        if stamps:
+            log.info(f"[align] {len(stamps)} word timestamps via {backend}.")
+        else:
+            log.warning("[align] No timestamps — will use proportional fallback.")
+        return stamps
+
+    except Exception as e:
+        log.warning(f"[align] Error ({backend}): {e} — using proportional fallback.")
+        return []
+
+
+# =========================================
+# TIMESTAMP → PER-LINE (start, duration) PAIRS
+# =========================================
+
+def _line_timings_from_stamps(
+    lines:     list[str],
+    stamps:    list[WordStamp],
+    voice_dur: float,
+) -> list[tuple[float, float]]:
+    """
+    Walk stamp list in order and assign each script line a start/end
+    based on its first and last matched word stamps.
+
+    Gaps between lines are absorbed into the preceding line so there is
+    never a blank-screen moment mid-speech.
+    """
+    # Build flat (line_index, clean_word) list
+    line_words = []
+    for i, line in enumerate(lines):
+        for w in re.findall(r"[a-zA-Z']+", line.lower()):
+            line_words.append((i, w))
+
+    if not line_words or not stamps:
+        return []
+
+    stamp_idx   = 0
+    line_starts: dict[int, float] = {}
+    line_ends:   dict[int, float] = {}
+
+    for (li, word) in line_words:
+        for si in range(stamp_idx, len(stamps)):
+            if stamps[si].word == word:
+                if li not in line_starts:
+                    line_starts[li] = stamps[si].start
+                line_ends[li] = stamps[si].end
+                stamp_idx = si + 1
+                break
+
+    if not line_starts:
+        return []
+
+    sorted_indices = sorted(line_starts.keys())
+    timings        = []
+
+    for k, li in enumerate(sorted_indices):
+        start   = line_starts[li]
+        raw_end = line_ends.get(li, start + 0.5)
+
+        # Extend to next line's start to absorb gap
+        if k + 1 < len(sorted_indices):
+            end = line_starts[sorted_indices[k + 1]]
+        else:
+            end = max(raw_end, voice_dur)
+
+        duration = max(end - start, 0.3)   # floor at 0.3s
+        timings.append((start, duration))
+
+    if len(timings) != len(lines):
+        log.warning("[align] Line count mismatch after stamp matching — using proportional.")
+        return []
+
+    return timings
+
+
+def _proportional_timings(lines: list[str], voice_dur: float) -> list[tuple[float, float]]:
+    """Word-count proportional timing — fallback when alignment unavailable."""
+    total_words   = sum(max(len(l.split()), 1) for l in lines)
+    raw_durations = [(max(len(l.split()), 1) / total_words) * voice_dur for l in lines]
+    scale         = voice_dur / sum(raw_durations)
+    durations     = [d * scale for d in raw_durations]
+
+    timings  = []
+    current  = 0.0
+    for d in durations:
+        timings.append((current, d))
+        current += d
+    return timings
+
+
+# =========================================
+# HELPERS
 # =========================================
 
 def make_text_clip(text, font, font_size, color, method="label",
                    stroke_color=None, stroke_width=0, size=None):
-    """Matches the helper in Viral-Reel-Script exactly (padding + kwargs)."""
     padded = text + "\n\n"
     kwargs = dict(
-        text=padded,
-        font=font,
-        font_size=font_size,
-        color=color,
-        stroke_color=stroke_color,
-        stroke_width=stroke_width,
-        method=method,
+        text=padded, font=font, font_size=font_size, color=color,
+        stroke_color=stroke_color, stroke_width=stroke_width, method=method,
     )
     if size is not None:
         kwargs["size"] = size
@@ -139,12 +441,11 @@ def make_text_clip(text, font, font_size, color, method="label",
 
 
 def contains_power_word(line: str) -> bool:
-    words = re.findall(r"\w+", line.lower())
-    return any(w in POWER_WORDS for w in words)
+    return any(w in POWER_WORDS for w in re.findall(r"\w+", line.lower()))
 
 
 # =========================================
-# OUTRO CLIPS  —  full explicit layout from Viral-Reel-Script
+# OUTRO CLIPS
 # =========================================
 
 def build_outro_clips(voice_duration: float, total_duration: float) -> list:
@@ -152,11 +453,9 @@ def build_outro_clips(voice_duration: float, total_duration: float) -> list:
     outro_dur   = total_duration - outro_start
     clips       = []
 
-    # Dark vignette overlay
     vignette = (
         ColorClip((VIDEO_W, VIDEO_H), color=(0, 0, 0), duration=outro_dur)
-        .with_opacity(0.70)
-        .with_start(outro_start)
+        .with_opacity(0.70).with_start(outro_start)
         .with_effects([vfx.FadeIn(OUTRO_FADE_IN), vfx.FadeOut(OUTRO_FADE_OUT)])
     )
     clips.append(vignette)
@@ -169,138 +468,109 @@ def build_outro_clips(voice_duration: float, total_duration: float) -> list:
     LINE_BELOW_Y = ANCHOR + 30
     TAGLINE_Y    = ANCHOR + 50
 
-    # Horizontal rule above name
     line_above = (
         ColorClip((LINE_W, LINE_H), color=(255, 255, 255), duration=outro_dur)
-        .with_position(("center", LINE_ABOVE_Y))
-        .with_start(outro_start)
+        .with_position(("center", LINE_ABOVE_Y)).with_start(outro_start)
         .with_effects([vfx.FadeIn(OUTRO_FADE_IN), vfx.FadeOut(OUTRO_FADE_OUT)])
     )
     clips.append(line_above)
 
-    # Page name  (spaced capitals)
     spaced_name = "  ".join(PAGE_NAME.upper())
     name_clip = (
         make_text_clip(spaced_name, FONT_GEORGIA, 74, "white", method="label")
-        .with_position(("center", NAME_Y))
-        .with_start(outro_start)
+        .with_position(("center", NAME_Y)).with_start(outro_start)
         .with_duration(outro_dur)
         .with_effects([vfx.FadeIn(OUTRO_FADE_IN), vfx.FadeOut(OUTRO_FADE_OUT)])
     )
     clips.append(name_clip)
 
-    # Horizontal rule below name
     line_below = (
         ColorClip((LINE_W, LINE_H), color=(255, 255, 255), duration=outro_dur)
-        .with_position(("center", LINE_BELOW_Y))
-        .with_start(outro_start)
+        .with_position(("center", LINE_BELOW_Y)).with_start(outro_start)
         .with_effects([vfx.FadeIn(OUTRO_FADE_IN), vfx.FadeOut(OUTRO_FADE_OUT)])
     )
     clips.append(line_below)
 
-    # Tagline  (italic, slightly delayed fade-in)
     tagline_clip = (
         make_text_clip(
             "philosophy for the modern mind",
-            FONT_GEORGIA_I, 32, (210, 210, 210),
-            method="label",
+            FONT_GEORGIA_I, 32, (210, 210, 210), method="label",
         )
-        .with_position(("center", TAGLINE_Y))
-        .with_start(outro_start)
+        .with_position(("center", TAGLINE_Y)).with_start(outro_start)
         .with_duration(outro_dur)
-        .with_effects([
-            vfx.FadeIn(OUTRO_FADE_IN + 0.35),
-            vfx.FadeOut(OUTRO_FADE_OUT),
-        ])
+        .with_effects([vfx.FadeIn(OUTRO_FADE_IN + 0.35), vfx.FadeOut(OUTRO_FADE_OUT)])
     )
     clips.append(tagline_clip)
-
     return clips
 
 
 # =========================================
-# SUBTITLE CLIPS
-#   • Hook line  : bigger (118px), top-positioned, fast fade-in
-#   • Power words: yellow, slightly larger
-#   • Engage line: gold, slightly larger
-#   • Normal     : white, standard size
+# SUBTITLE CLIPS  —  real timestamps when available, proportional fallback
 # =========================================
 
-def build_subtitle_clips(lines: list, voice_dur: float, sections: dict) -> list:
+def build_subtitle_clips(
+    lines:     list[str],
+    voice_dur: float,
+    sections:  dict | None,
+    stamps:    list[WordStamp],
+) -> list:
     subtitle_clips = []
 
-    # Identify hook / engage anchor text
     hook_line   = None
     engage_line = None
     if sections:
         hook_line   = sections.get("hook",   "").strip().split("\n")[0].strip()
         engage_line = sections.get("engage", "").strip().split("\n")[0].strip()
 
-    # Word-count-proportional durations (with scale correction)
-    total_words    = sum(max(len(l.split()), 1) for l in lines)
-    line_durations = [
-        (max(len(l.split()), 1) / total_words) * voice_dur
-        for l in lines
-    ]
-    scale          = voice_dur / sum(line_durations)
-    line_durations = [d * scale for d in line_durations]
-
-    current_time = 0.0
+    # Choose timing source
+    timings = None
+    if stamps:
+        timings = _line_timings_from_stamps(lines, stamps, voice_dur)
+    if not timings:
+        timings = _proportional_timings(lines, voice_dur)
+        log.info("[subtitle] Using proportional fallback timing.")
+    else:
+        log.info("[subtitle] Using real word-timestamp alignment.")
 
     for i, line in enumerate(lines):
-        wrapped = textwrap.fill(line, width=24)
+        wrapped  = textwrap.fill(line, width=24)
+        is_hook  = bool(hook_line   and line.strip().startswith(hook_line[:20]))
+        is_engage= bool(engage_line and line.strip().startswith(engage_line[:20]))
+        has_power= contains_power_word(line)
 
-        is_hook   = bool(hook_line   and line.strip().startswith(hook_line[:20]))
-        is_engage = bool(engage_line and line.strip().startswith(engage_line[:20]))
-        has_power = contains_power_word(line)
-
-        # ── Visual style per line type ──
         if is_hook:
-            font_size    = 118
-            color        = "white"
-            fade_in_dur  = 0.12
-            y_override   = 420          # high on screen — scroll-stop zone
+            font_size, color, fade_in_dur, y_override = 118, "white", 0.12, 420
         elif is_engage:
-            font_size    = 96
-            color        = (255, 215, 0)   # gold
-            fade_in_dur  = 0.2
-            y_override   = None
+            font_size, color, fade_in_dur, y_override = 96, (255, 215, 0), 0.2, None
         elif has_power:
-            font_size    = FONT_SIZE + 6
-            color        = (255, 230, 50)  # yellow highlight
-            fade_in_dur  = 0.3
-            y_override   = None
+            font_size, color, fade_in_dur, y_override = FONT_SIZE + 6, (255, 230, 50), 0.3, None
         else:
-            font_size    = FONT_SIZE
-            color        = "white"
-            fade_in_dur  = 0.4
-            y_override   = None
+            font_size, color, fade_in_dur, y_override = FONT_SIZE, "white", 0.4, None
 
         txt = make_text_clip(
             wrapped, FONT_PATH, font_size, color,
-            method="caption",
-            stroke_color="black",
+            method="caption", stroke_color="black",
             stroke_width=5 if not is_hook else 7,
             size=(TEXT_WIDTH, None),
         )
 
-        y_pos = y_override if y_override is not None else max(TEXT_BOTTOM_Y - txt.h, 200)
+        y_pos        = y_override if y_override is not None else max(TEXT_BOTTOM_Y - txt.h, 200)
+        start_t, dur = timings[i]
 
         txt = (
             txt
             .with_position(("center", y_pos))
-            .with_start(current_time)
-            .with_duration(line_durations[i])
+            .with_start(start_t)
+            .with_duration(dur)
             .with_effects([vfx.FadeIn(fade_in_dur), vfx.FadeOut(0.3)])
         )
         subtitle_clips.append(txt)
-        current_time += line_durations[i]
 
     return subtitle_clips
 
 
 # =========================================
-# BACKGROUND  —  slow zoom + attention-reset micro-pulses
+# BACKGROUND
 # =========================================
 
 def build_background(selected_image: str, total_dur: float) -> ImageClip:
@@ -313,67 +583,78 @@ def build_background(selected_image: str, total_dur: float) -> ImageClip:
 
     def zoom_func(t):
         base   = 1 + 0.012 * t
-        pulse  = 0.022 if (5.0  < t < 5.35)  else 0.0   # attention reset ~5 s
-        pulse2 = 0.015 if (12.0 < t < 12.3)  else 0.0   # second interrupt mid-video
+        pulse  = 0.022 if (5.0  < t < 5.35) else 0.0
+        pulse2 = 0.015 if (12.0 < t < 12.3) else 0.0
         return base + pulse + pulse2
 
     return bg.with_effects([vfx.Resize(zoom_func)])
 
 
 # =========================================
-# PUBLIC API  —  render_reel
+# PUBLIC API
 # =========================================
 
 def render_reel(reel_name: str, script: str, sections_json: str | None) -> str:
     """
-    Renders a single reel and returns the output .mp4 path.
+    Renders a single reel. Returns output .mp4 path.
     Raises on failure — caller handles retry / status update.
     """
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
     sections = json.loads(sections_json) if sections_json else None
 
     safe_name   = re.sub(r"[^\w]", "_", reel_name).lower()
-    voice_file  = os.path.join(OUTPUT_FOLDER, f"_tmp_voice_{safe_name}.mp3")
+    voice_mp3   = os.path.join(OUTPUT_FOLDER, f"_tmp_voice_{safe_name}.mp3")
+    voice_wav   = os.path.join(OUTPUT_FOLDER, f"_tmp_voice_{safe_name}_align.wav")
     output_path = os.path.join(OUTPUT_FOLDER, f"{safe_name}.mp4")
 
-    log.info(f"[render] Starting: {reel_name}")
+    log.info(f"[render] ── Starting: {reel_name} ──")
 
-    # ── 1. Voice ──────────────────────────────────────────
-    log.info("[render] Generating voice (Chatterbox)...")
-    asyncio.run(_generate_voice(script, voice_file))
-    voice     = AudioFileClip(voice_file)
+    # ── 1. Voice  (per-section emotion tuning) ────────────
+    log.info("[render] Generating voice (Chatterbox, sectioned)...")
+    asyncio.run(generate_voice_sectioned(sections, script, voice_mp3))
+    voice     = AudioFileClip(voice_mp3)
     voice_dur = voice.duration
     total_dur = voice_dur + SILENCE_BUFFER + OUTRO_HOLD
     log.info(f"[render] voice={voice_dur:.1f}s  total={total_dur:.1f}s")
 
-    # ── 2. Background ────────────────────────────────────
+    # ── 2. Forced alignment — real word timestamps ─────────
+    # Convert mp3 → wav (alignment tools need PCM)
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", voice_mp3, voice_wav],
+        check=True, capture_output=True,
+    )
+    lines  = [l.strip() for l in script.split("\n") if l.strip()]
+    stamps = get_word_timestamps(voice_wav, " ".join(lines))
+    try:
+        os.remove(voice_wav)
+    except OSError:
+        pass
+
+    # ── 3. Background ─────────────────────────────────────
     images = [
         f for f in os.listdir(STOCK_FOLDER)
         if f.lower().endswith((".jpg", ".png", ".jpeg"))
     ]
     if not images:
-        raise FileNotFoundError(f"No images found in STOCK_FOLDER={STOCK_FOLDER!r}")
-
+        raise FileNotFoundError(f"No images in STOCK_FOLDER={STOCK_FOLDER!r}")
     selected_image = os.path.join(STOCK_FOLDER, random.choice(images))
-    log.info(f"[render] Background image: {selected_image}")
+    log.info(f"[render] Background: {selected_image}")
     bg = build_background(selected_image, total_dur)
 
-    # Dark overlay — slightly darkens background for subtitle contrast
     overlay = (
         ColorClip((VIDEO_W, VIDEO_H), color=(0, 0, 0), duration=total_dur)
         .with_opacity(0.52)
     )
 
-    # ── 3. Subtitles ─────────────────────────────────────
-    log.info("[render] Building subtitle clips...")
-    lines          = [l.strip() for l in script.split("\n") if l.strip()]
-    subtitle_clips = build_subtitle_clips(lines, voice_dur, sections)
+    # ── 4. Subtitles  (real timestamps when available) ────
+    log.info("[render] Building subtitles...")
+    subtitle_clips = build_subtitle_clips(lines, voice_dur, sections, stamps)
 
-    # ── 4. Outro ─────────────────────────────────────────
+    # ── 5. Outro ──────────────────────────────────────────
     log.info("[render] Building outro...")
     outro_clips = build_outro_clips(voice_dur, total_dur)
 
-    # ── 5. Audio  (voice + music louder for emotional contrast) ──
+    # ── 6. Audio ──────────────────────────────────────────
     music = (
         AudioFileClip(MUSIC_FILE)
         .subclipped(0, total_dur)
@@ -383,11 +664,12 @@ def render_reel(reel_name: str, script: str, sections_json: str | None) -> str:
     voice_faded = voice.with_effects([afx.AudioFadeOut(0.5)])
     final_audio = CompositeAudioClip([voice_faded, music])
 
-    # ── 6. Compose ───────────────────────────────────────
-    all_clips = [bg, overlay] + subtitle_clips + outro_clips
-
+    # ── 7. Compose ────────────────────────────────────────
     final = (
-        CompositeVideoClip(all_clips, size=(VIDEO_W, VIDEO_H))
+        CompositeVideoClip(
+            [bg, overlay] + subtitle_clips + outro_clips,
+            size=(VIDEO_W, VIDEO_H),
+        )
         .with_audio(final_audio)
         .with_duration(total_dur)
         .with_effects([vfx.FadeOut(OUTRO_FADE_OUT)])
@@ -398,14 +680,14 @@ def render_reel(reel_name: str, script: str, sections_json: str | None) -> str:
         fps=30,
         codec="libx264",
         audio_codec="aac",
-        preset="fast",          # faster for daily batch rendering
+        preset="fast",
     )
 
-    # ── 7. Cleanup ───────────────────────────────────────
+    # ── 8. Cleanup ────────────────────────────────────────
     try:
-        os.remove(voice_file)
+        os.remove(voice_mp3)
     except OSError:
         pass
 
-    log.info(f"[render] Saved: {output_path}")
+    log.info(f"[render] ✓ Saved: {output_path}")
     return output_path
