@@ -1,7 +1,7 @@
 """
 main.py — FastAPI web portal for ReelForge
 """
-import re, json, uuid, logging, os, secrets
+import re, json, uuid, logging, os, secrets, threading
 from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 from .models import init_db, Session, ReelJob, JobStatus
 from .scheduler import start_scheduler, stop_scheduler
+from .uploader import upload_video, build_yt_title_and_description, extract_tags_from_script
 
 # ── HTTP Basic Auth ───────────────────────────────────────
 _security = HTTPBasic()
@@ -248,6 +249,84 @@ async def retry_job(job_id: int, _user: str = Depends(require_auth)):
     db.commit()
     db.close()
     return {"ok": True, "job_id": job_id}
+
+
+def _do_upload_now(job_id: int):
+    """
+    Worker function run in a background thread by upload_now endpoint.
+    Builds smart title/description/tags from the reel script, then uploads.
+    """
+    from datetime import timezone
+    def _utcnow():
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+    db  = Session()
+    job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
+    if not job or not job.output_path:
+        db.close()
+        logging.getLogger("upload_now").error(f"Job #{job_id} not found or no output_path")
+        return
+
+    log = logging.getLogger("upload_now")
+    job.status     = JobStatus.uploading
+    job.updated_at = _utcnow()
+    db.commit()
+
+    try:
+        title, description = build_yt_title_and_description(
+            reel_name         = job.reel_name,
+            script            = job.script,
+            extra_description = job.script[:500],
+        )
+        tags     = extract_tags_from_script(job.script)
+        video_id = upload_video(
+            video_path  = job.output_path,
+            title       = title,
+            description = description,
+            tags        = tags,
+        )
+        job.yt_video_id = video_id
+        job.status      = JobStatus.done
+        job.error_msg   = None
+        log.info(f"[upload_now] job #{job_id} uploaded → {video_id}")
+    except Exception as e:
+        log.error(f"[upload_now] FAILED job #{job_id}: {e}")
+        job.retry_count += 1
+        job.status    = JobStatus.failed if job.retry_count >= 3 else JobStatus.rendered
+        job.error_msg = str(e)
+    finally:
+        job.updated_at = _utcnow()
+        db.commit()
+        db.close()
+
+
+@app.post("/jobs/{job_id}/upload_now")
+async def upload_now(
+    job_id: int,
+    _user: str = Depends(require_auth),
+):
+    """
+    Immediately start uploading a rendered reel to YouTube without waiting
+    for the scheduler.  The upload runs in a background thread so the
+    response returns instantly and the UI can poll for status.
+    """
+    db  = Session()
+    job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
+    if not job:
+        db.close()
+        raise HTTPException(404, "Job not found")
+    if job.status not in (JobStatus.rendered, JobStatus.failed):
+        db.close()
+        raise HTTPException(400, f"Job is {job.status!r} — can only upload from 'rendered' or 'failed' state")
+    if not job.output_path:
+        db.close()
+        raise HTTPException(400, "No output file found for this job yet — please wait for rendering to complete")
+    db.close()
+
+    # Kick off upload in a daemon thread so FastAPI response isn't blocked
+    t = threading.Thread(target=_do_upload_now, args=(job_id,), daemon=True)
+    t.start()
+    return {"ok": True, "job_id": job_id, "message": "Upload started — check status in a few seconds"}
 
 
 @app.post("/jobs/{job_id}/set_upload_time")

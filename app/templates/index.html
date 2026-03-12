@@ -351,6 +351,60 @@
   }
   .btn-time:hover { background: rgba(63,185,80,0.2); }
 
+  /* ── Upload Now button ── */
+  .btn-upload-now {
+    background: linear-gradient(135deg, rgba(88,166,255,0.18), rgba(188,140,255,0.18));
+    color: var(--accent);
+    border: 1px solid rgba(88,166,255,0.35);
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-upload-now:hover {
+    background: linear-gradient(135deg, rgba(88,166,255,0.3), rgba(188,140,255,0.3));
+    border-color: rgba(88,166,255,0.55);
+    box-shadow: 0 0 14px rgba(88,166,255,0.25);
+  }
+  .btn-upload-now:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+  }
+
+  /* ── YT Title preview badge ── */
+  .yt-title-preview {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: rgba(88,166,255,0.06);
+    border: 1px solid rgba(88,166,255,0.15);
+    border-radius: 7px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text2);
+    line-height: 1.5;
+  }
+  .yt-title-preview .preview-label {
+    font-size: 9px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+  }
+  .yt-title-preview .preview-title {
+    color: var(--text);
+    word-break: break-all;
+  }
+  .yt-char-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    margin-top: 4px;
+  }
+  .yt-char-count.ok  { color: var(--success); }
+  .yt-char-count.warn { color: var(--warn-bright); }
+  .yt-char-count.over { color: var(--fail); }
+
   /* ── Status badges ── */
   .status {
     display: inline-flex;
@@ -1071,10 +1125,10 @@ Type IRON if this hit.
                   <div id="jd_ist_{{ job.id }}" style="font-size:10px;color:var(--warn-bright);font-family:'DM Mono',monospace;margin-top:3px;"></div>
                   <button class="btn btn-sm btn-time" onclick="submitJobUploadTime('{{ job.id }}')">📅 Set</button>
                 </div>
+                <button class="btn btn-sm btn-upload-now" id="upnow-{{ job.id }}" onclick="uploadNow('{{ job.id }}')" title="Upload to YouTube right now">⬆ Upload Now</button>
                 {% endif %}
 
                 <button class="btn btn-sm btn-del" onclick="deleteJob('{{ job.id }}')">✕</button>
-              </div>
             </div>
             {% endfor %}
           </div>
@@ -1530,6 +1584,8 @@ function refreshJobs() {
           if (job.status === 'rendered') {
             const picker = buildJobPickerHTML(id);
             actions.appendChild(picker);
+            const upBtn = buildUploadNowBtn(id);
+            actions.appendChild(upBtn);
           }
 
           const delBtn = document.createElement('button');
@@ -1599,6 +1655,8 @@ function buildJobCard(job) {
     const actions = div.querySelector('.job-actions');
     const picker = buildJobPickerHTML(id);
     actions.insertBefore(picker, actions.querySelector('.btn-del'));
+    const upBtn = buildUploadNowBtn(id);
+    actions.insertBefore(upBtn, actions.querySelector('.btn-del'));
   }
 
   return div;
@@ -1624,6 +1682,16 @@ function buildJobPickerHTML(id) {
   return wrap;
 }
 
+function buildUploadNowBtn(id) {
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-sm btn-upload-now';
+  btn.id = `upnow-${id}`;
+  btn.title = 'Upload to YouTube right now — no scheduler needed';
+  btn.textContent = '⬆ Upload Now';
+  btn.onclick = () => uploadNow(id);
+  return btn;
+}
+
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -1634,6 +1702,42 @@ function escHtml(str) {
 async function retryJob(id) {
   await fetch(`/jobs/${id}/retry`, { method: 'POST' });
   refreshJobs();
+}
+
+async function uploadNow(id) {
+  const btn = document.getElementById(`upnow-${id}`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Uploading…';
+  }
+  try {
+    const res = await fetch(`/jobs/${id}/upload_now`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      alert(`Upload failed: ${err.detail || res.statusText}`);
+      if (btn) { btn.disabled = false; btn.textContent = '⬆ Upload Now'; }
+      return;
+    }
+    // Poll for completion
+    let polls = 0;
+    const poll = setInterval(async () => {
+      polls++;
+      const jobs = await fetch('/jobs').then(r => r.json());
+      const job  = jobs.find(j => String(j.id) === String(id));
+      if (!job) { clearInterval(poll); return; }
+      if (job.status === 'done' || job.status === 'failed') {
+        clearInterval(poll);
+        refreshJobs();
+      } else if (polls > 60) {
+        clearInterval(poll);
+        refreshJobs();
+      }
+    }, 3000);
+    refreshJobs();
+  } catch(e) {
+    alert(`Network error: ${e.message}`);
+    if (btn) { btn.disabled = false; btn.textContent = '⬆ Upload Now'; }
+  }
 }
 
 async function deleteJob(id) {

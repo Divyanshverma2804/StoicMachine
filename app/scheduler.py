@@ -10,7 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from .models import Session, ReelJob, JobStatus
 from .renderer import render_reel
-from .uploader import upload_video
+from .uploader import upload_video, build_yt_title_and_description
 
 log = logging.getLogger("scheduler")
 
@@ -96,10 +96,19 @@ def upload_tick():
         db.commit()
 
         try:
+            title, description = build_yt_title_and_description(
+                reel_name         = job.reel_name,
+                script            = job.script,
+                extra_description = job.script[:500],
+            )
+            tags = None  # extracted inside build_yt_title_and_description
+            from .uploader import extract_tags_from_script
+            tags = extract_tags_from_script(job.script)
             video_id = upload_video(
                 video_path  = job.output_path,
-                title       = job.reel_name.replace("_"," ").title(),
-                description = job.script[:500],
+                title       = title,
+                description = description,
+                tags        = tags,
             )
             job.yt_video_id = video_id
             job.status      = JobStatus.done
