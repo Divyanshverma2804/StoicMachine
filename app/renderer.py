@@ -125,10 +125,12 @@ def _preprocess_for_tts(text: str) -> str:
     """
     Clean up script text before sending to Chatterbox.
 
-    - SCREAMING CAPS  → Title Case
-      Neural TTS reads ALL-CAPS the same as lowercase — they don't shout.
+    - SCREAMING CAPS → Title Case
+      Neural TTS reads ALL-CAPS identically to lowercase.
       Title-casing lets the model focus on prosody instead of fighting the casing.
-    - Line breaks → '... ' (ellipsis micro-pause between lines)
+    - Lines joined with a single space.
+      Chatterbox handles natural pauses from punctuation (. , !) on its own.
+      DO NOT use '...' as a join — Chatterbox will literally speak it.
     """
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     cleaned = []
@@ -140,7 +142,8 @@ def _preprocess_for_tts(text: str) -> str:
             line,
         )
         cleaned.append(line)
-    return "... ".join(cleaned)
+    # Join with single space — punctuation already signals pauses to Chatterbox
+    return " ".join(cleaned)
 
 
 def _generate_voice_for_section(text: str, wav_path: str, section_key: str = "default"):
