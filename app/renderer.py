@@ -118,7 +118,7 @@ OUTRO_FADE_OUT = 0.8
 HOOK_WORD_DURATION = 0.18   # seconds per word in hook flash mode
 
 # ── Colors ──────────────────────────────────────────────────────────
-COLOR_WHITE   = "white"
+COLOR_WHITE   = (255, 255, 255)
 COLOR_YELLOW  = (255, 225, 0)
 COLOR_GOLD    = (255, 200, 0)
 COLOR_GRAY    = (210, 210, 210)

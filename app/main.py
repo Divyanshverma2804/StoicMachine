@@ -1,18 +1,35 @@
 """
 main.py — FastAPI web portal for ReelForge
 """
-import re, json, uuid, logging
+import re, json, uuid, logging, os, secrets
 from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .models import init_db, Session, ReelJob, JobStatus
 from .scheduler import start_scheduler, stop_scheduler
+
+# ── HTTP Basic Auth ───────────────────────────────────────
+_security = HTTPBasic()
+_PORTAL_USER = os.environ.get("PORTAL_USER", "admin")
+_PORTAL_PASS = os.environ.get("PORTAL_PASSWORD", "reelforge")
+
+def require_auth(creds: HTTPBasicCredentials = Depends(_security)):
+    ok_user = secrets.compare_digest(creds.username.encode(), _PORTAL_USER.encode())
+    ok_pass = secrets.compare_digest(creds.password.encode(), _PORTAL_PASS.encode())
+    if not (ok_user and ok_pass):
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Basic realm='ReelForge'"},
+        )
+    return creds.username
 
 logging.basicConfig(
     level=logging.INFO,
@@ -77,11 +94,14 @@ def parse_content_md(raw: str) -> list[dict]:
 # ── Routes ────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    db   = Session()
-    jobs = db.query(ReelJob).order_by(ReelJob.created_at.desc()).limit(100).all()
+async def index(request: Request, _user: str = Depends(require_auth)):
+    db     = Session()
+    jobs   = db.query(ReelJob).order_by(ReelJob.created_at.desc()).limit(100).all()
+    counts = {s.value: 0 for s in JobStatus}
+    for j in jobs:
+        counts[j.status] = counts.get(j.status, 0) + 1
     db.close()
-    return templates.TemplateResponse("index.html", {"request": request, "jobs": jobs})
+    return templates.TemplateResponse("index.html", {"request": request, "jobs": jobs, "counts": counts})
 
 
 @app.post("/submit")
@@ -90,6 +110,7 @@ async def submit_content(
     content_md: str  = Form(...),
     upload_time: str = Form(""),       # ISO datetime string, optional global default
     per_reel_times: str = Form("{}"),  # JSON: {"reel_name": "ISO datetime", ...}
+    _user: str = Depends(require_auth),
 ):
     reels = parse_content_md(content_md)
     if not reels:
@@ -141,7 +162,7 @@ async def submit_content(
 
 
 @app.get("/jobs", response_class=JSONResponse)
-async def list_jobs(batch_id: str = None):
+async def list_jobs(batch_id: str = None, _user: str = Depends(require_auth)):
     db = Session()
     q  = db.query(ReelJob)
     if batch_id:
@@ -151,8 +172,70 @@ async def list_jobs(batch_id: str = None):
     return [j.as_dict() for j in jobs]
 
 
+@app.get("/calendar/events", response_class=JSONResponse)
+async def calendar_events(_user: str = Depends(require_auth)):
+    """
+    Returns all jobs that have an upload_time, formatted for FullCalendar.
+    Also returns jobs without upload_time as 'unscheduled' for the sidebar.
+    """
+    db   = Session()
+    jobs = db.query(ReelJob).order_by(ReelJob.created_at.desc()).limit(200).all()
+    db.close()
+
+    STATUS_COLORS = {
+        "pending":   "#d29922",
+        "rendering": "#bc8cff",
+        "rendered":  "#3fb950",
+        "uploading": "#58a6ff",
+        "done":      "#39d353",
+        "failed":    "#f85149",
+    }
+
+    events = []
+    for j in jobs:
+        if j.upload_time:
+            events.append({
+                "id":              str(j.id),
+                "title":           j.reel_name.replace("_", " "),
+                "start":           j.upload_time.isoformat() + "Z",
+                "backgroundColor": STATUS_COLORS.get(j.status, "#58a6ff"),
+                "borderColor":     STATUS_COLORS.get(j.status, "#58a6ff"),
+                "textColor":       "#0d1117",
+                "extendedProps": {
+                    "status":      j.status,
+                    "batch_id":    j.batch_id,
+                    "yt_video_id": j.yt_video_id,
+                    "job_id":      j.id,
+                },
+            })
+    return events
+
+
+@app.post("/jobs/{job_id}/reschedule", response_class=JSONResponse)
+async def reschedule_job(
+    job_id: int,
+    new_time: str = Form(...),
+    _user: str = Depends(require_auth),
+):
+    """Called by FullCalendar drag-and-drop with the new ISO datetime."""
+    db  = Session()
+    job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
+    if not job:
+        db.close()
+        raise HTTPException(404, "Job not found")
+    try:
+        # new_time arrives as ISO 8601 with Z suffix from FullCalendar
+        job.upload_time = datetime.fromisoformat(new_time.replace("Z", ""))
+    except ValueError:
+        raise HTTPException(400, "Invalid datetime format")
+    job.updated_at = datetime.utcnow()
+    db.commit()
+    db.close()
+    return {"ok": True}
+
+
 @app.post("/jobs/{job_id}/retry")
-async def retry_job(job_id: int):
+async def retry_job(job_id: int, _user: str = Depends(require_auth)):
     db  = Session()
     job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
     if not job:
@@ -168,7 +251,7 @@ async def retry_job(job_id: int):
 
 
 @app.post("/jobs/{job_id}/set_upload_time")
-async def set_upload_time(job_id: int, upload_time: str = Form(...)):
+async def set_upload_time(job_id: int, upload_time: str = Form(...), _user: str = Depends(require_auth)):
     db  = Session()
     job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
     if not job:
@@ -185,7 +268,7 @@ async def set_upload_time(job_id: int, upload_time: str = Form(...)):
 
 
 @app.delete("/jobs/{job_id}")
-async def delete_job(job_id: int):
+async def delete_job(job_id: int, _user: str = Depends(require_auth)):
     db  = Session()
     job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
     if not job:
