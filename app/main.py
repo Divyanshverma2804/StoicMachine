@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 from .models import init_db, Session, ReelJob, JobStatus
 from .scheduler import start_scheduler, stop_scheduler
-from .uploader import upload_video, build_yt_title_and_description, extract_tags_from_script
+from .uploader import upload_video, build_yt_title_and_description, extract_tags_from_script, fetch_video_stats
 
 # ── HTTP Basic Auth ───────────────────────────────────────
 _security = HTTPBasic()
@@ -66,6 +66,10 @@ def parse_content_md(raw: str) -> list[dict]:
             continue
         reel_name = name_match.group(1).strip()
 
+        # Optional # Category: line (sits directly below # ReelName:)
+        cat_match = re.search(r"#\s*Category\s*:\s*(.+)", block, re.IGNORECASE)
+        category  = cat_match.group(1).strip() if cat_match else "uncategorized"
+
         hook_m     = re.search(r"##\s*Hook\s*:\s*\n(.+?)(?=##|\Z)",     block, re.IGNORECASE|re.DOTALL)
         conflict_m = re.search(r"##\s*Conflict\s*:\s*\n(.+?)(?=##|\Z)", block, re.IGNORECASE|re.DOTALL)
         shift_m    = re.search(r"##\s*Shift\s*:\s*\n(.+?)(?=##|\Z)",    block, re.IGNORECASE|re.DOTALL)
@@ -88,7 +92,7 @@ def parse_content_md(raw: str) -> list[dict]:
             script   = content_match.group(1).strip()
             sections = None
 
-        reels.append({"name": reel_name, "script": script, "sections": sections})
+        reels.append({"name": reel_name, "script": script, "sections": sections, "category": category})
     return reels
 
 
@@ -152,6 +156,7 @@ async def submit_content(
             sections_json = json.dumps(reel["sections"]) if reel["sections"] else None,
             upload_time   = upload_dt,
             status        = JobStatus.pending,
+            category      = reel.get("category", "uncategorized"),
         )
         db.add(job)
         created.append(reel["name"])
@@ -359,6 +364,89 @@ async def delete_job(job_id: int, _user: str = Depends(require_auth)):
     return {"ok": True}
 
 
+@app.post("/jobs/{job_id}/refresh_stats")
+async def refresh_stats(job_id: int, _user: str = Depends(require_auth)):
+    """
+    On-demand stats refresh for a single job.
+    Calls the YouTube Data API and updates the views column immediately.
+    Only works on jobs that are 'done' and have a yt_video_id.
+    """
+    db  = Session()
+    job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
+    if not job:
+        db.close()
+        raise HTTPException(404, "Job not found")
+    if not job.yt_video_id:
+        db.close()
+        raise HTTPException(400, "No YouTube video ID for this job yet")
+    yt_id = job.yt_video_id
+    db.close()
+
+    stats = fetch_video_stats(yt_id)   # safe — returns zeros on error
+
+    db2  = Session()
+    job2 = db2.query(ReelJob).filter(ReelJob.id == job_id).first()
+    if job2:
+        job2.views      = stats["viewCount"]
+        job2.updated_at = datetime.utcnow()
+        db2.commit()
+    db2.close()
+
+    return {
+        "ok":           True,
+        "job_id":       job_id,
+        "yt_video_id":  yt_id,
+        "viewCount":    stats["viewCount"],
+        "likeCount":    stats["likeCount"],
+        "commentCount": stats["commentCount"],
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
+
+
+@app.get("/analytics/categories", response_class=JSONResponse)
+async def analytics_categories(_user: str = Depends(require_auth)):
+    """
+    Returns a per-category summary:
+      - total jobs
+      - done count
+      - failed count
+      - avg_views: average of the 'views' column for done jobs in that category
+    """
+    db   = Session()
+    jobs = db.query(ReelJob).all()
+    db.close()
+
+    summary: dict[str, dict] = {}
+    for job in jobs:
+        cat = job.category or "uncategorized"
+        if cat not in summary:
+            summary[cat] = {
+                "category":   cat,
+                "total":      0,
+                "done":       0,
+                "failed":     0,
+                "avg_views":  0,
+                "_view_sum":  0,   # internal accumulator, stripped before returning
+                "_done_views":0,
+            }
+        summary[cat]["total"] += 1
+        if job.status == JobStatus.done:
+            summary[cat]["done"] += 1
+            summary[cat]["_view_sum"]   += job.views or 0
+            summary[cat]["_done_views"] += 1
+        elif job.status == JobStatus.failed:
+            summary[cat]["failed"] += 1
+
+    # Compute avg_views and strip internal keys
+    result = []
+    for rec in summary.values():
+        done_with_views = rec.pop("_done_views")
+        view_sum        = rec.pop("_view_sum")
+        rec["avg_views"] = round(view_sum / done_with_views, 1) if done_with_views > 0 else 0
+        result.append(rec)
+
+    return sorted(result, key=lambda x: x["total"], reverse=True)

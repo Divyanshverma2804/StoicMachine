@@ -10,7 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from .models import Session, ReelJob, JobStatus
 from .renderer import render_reel
-from .uploader import upload_video, build_yt_title_and_description
+from .uploader import upload_video, build_yt_title_and_description, extract_tags_from_script, fetch_video_stats
 
 log = logging.getLogger("scheduler")
 
@@ -101,8 +101,6 @@ def upload_tick():
                 script            = job.script,
                 extra_description = job.script[:500],
             )
-            tags = None  # extracted inside build_yt_title_and_description
-            from .uploader import extract_tags_from_script
             tags = extract_tags_from_script(job.script)
             video_id = upload_video(
                 video_path  = job.output_path,
@@ -125,6 +123,50 @@ def upload_tick():
     db.close()
 
 
+# ── Stats refresh tick ───────────────────────────────────────
+
+def stats_tick():
+    """
+    Fetch up-to-date view / like / comment counts for every 'done' job
+    that has a yt_video_id.  Runs every 6 hours.
+    YouTube Data API v3 quota cost: 1 unit per videos.list call.
+    """
+    db = Session()
+    try:
+        jobs = (
+            db.query(ReelJob)
+            .filter(
+                ReelJob.status    == JobStatus.done,
+                ReelJob.yt_video_id != None,
+            )
+            .all()
+        )
+    except Exception as e:
+        log.error(f"[scheduler] stats_tick DB error: {e}")
+        db.close()
+        return
+
+    for job in jobs:
+        try:
+            stats = fetch_video_stats(job.yt_video_id)
+            job.views      = stats["viewCount"]
+            job.updated_at = _utcnow()
+            log.info(
+                f"[scheduler] stats_tick job #{job.id} '{job.reel_name}' "
+                f"→ {stats['viewCount']} views"
+            )
+        except Exception as e:
+            log.warning(f"[scheduler] stats_tick failed for job #{job.id}: {e}")
+
+    try:
+        db.commit()
+    except Exception as e:
+        log.error(f"[scheduler] stats_tick commit error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 # ── Scheduler lifecycle ───────────────────────────────────
 
 _scheduler = BackgroundScheduler(timezone="UTC")
@@ -134,8 +176,10 @@ def start_scheduler():
                        id="render_tick", replace_existing=True)
     _scheduler.add_job(upload_tick, "interval", seconds=60,
                        id="upload_tick", replace_existing=True)
+    _scheduler.add_job(stats_tick, "interval", hours=6,
+                       id="stats_tick", replace_existing=True)
     _scheduler.start()
-    log.info("[scheduler] Started — render + upload ticks every 60s")
+    log.info("[scheduler] Started — render + upload ticks every 60s, stats tick every 6h")
 
 
 def stop_scheduler():

@@ -18,7 +18,10 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 log = logging.getLogger("uploader")
 
-SCOPES             = ["https://www.googleapis.com/auth/youtube.upload"]
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+]
 CLIENT_SECRET_FILE = os.environ.get("YT_CLIENT_SECRET", "client_secret.json")
 TOKEN_FILE         = os.environ.get("YT_TOKEN_FILE",     "data/yt_token.json")
 
@@ -213,3 +216,31 @@ def upload_video(
     video_id = response["id"]
     log.info(f"[upload] Done: https://youtu.be/{video_id}")
     return video_id
+
+
+def fetch_video_stats(video_id: str) -> dict:
+    """
+    Fetch statistics for a single YouTube video via the Data API.
+    Returns a dict with integer keys: viewCount, likeCount, commentCount.
+    Returns zeros on any error so the caller never needs to handle exceptions.
+    """
+    try:
+        creds   = _get_credentials()
+        youtube = build("youtube", "v3", credentials=creds)
+        resp = youtube.videos().list(
+            part="statistics",
+            id=video_id,
+        ).execute()
+        items = resp.get("items", [])
+        if not items:
+            log.warning(f"[stats] No items returned for video {video_id}")
+            return {"viewCount": 0, "likeCount": 0, "commentCount": 0}
+        stats = items[0].get("statistics", {})
+        return {
+            "viewCount":    int(stats.get("viewCount",    0)),
+            "likeCount":    int(stats.get("likeCount",    0)),
+            "commentCount": int(stats.get("commentCount", 0)),
+        }
+    except Exception as exc:
+        log.error(f"[stats] fetch_video_stats({video_id}) failed: {exc}")
+        return {"viewCount": 0, "likeCount": 0, "commentCount": 0}

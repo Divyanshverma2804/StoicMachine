@@ -886,6 +886,82 @@
   }
   .btn-logout:hover { color: var(--fail); border-color: rgba(248,81,73,0.35); }
 
+  /* ── Category badge ── */
+  .cat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+    background: rgba(188,140,255,0.10);
+    color: var(--purple);
+    border: 1px solid rgba(188,140,255,0.22);
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Category filter bar ── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .filter-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    white-space: nowrap;
+  }
+  .filter-select {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text2);
+    border-radius: 7px;
+    padding: 6px 30px 6px 10px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .filter-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  /* ── Views badge ── */
+  .views-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: 'DM Mono', monospace;
+    background: rgba(57,211,83,0.10);
+    color: var(--teal);
+    border: 1px solid rgba(57,211,83,0.22);
+  }
+
+  /* ── Refresh stats button ── */
+  .btn-refresh-stats {
+    background: rgba(57,211,83,0.08);
+    color: var(--teal);
+    border: 1px solid rgba(57,211,83,0.2);
+  }
+  .btn-refresh-stats:hover { background: rgba(57,211,83,0.18); }
+
 </style>
 </head>
 <body>
@@ -1056,6 +1132,23 @@ Type IRON if this hit.
           <div class="stat-pill" data-status="failed">Failed <span class="num">{{ counts["failed"] }}</span></div>
         </div>
 
+        <!-- Category filter -->
+        <div class="filter-bar">
+          <span class="filter-label">🏷 Category</span>
+          <select class="filter-select" id="categoryFilter" onchange="applyCategoryFilter()">
+            <option value="">All categories</option>
+            <option value="silent_power">silent_power</option>
+            <option value="stoic_philosophy">stoic_philosophy</option>
+            <option value="harsh_truths">harsh_truths</option>
+            <option value="discipline">discipline</option>
+            <option value="psychological_power">psychological_power</option>
+            <option value="respect_dynamics">respect_dynamics</option>
+            <option value="masculine_mindset">masculine_mindset</option>
+            <option value="self_mastery">self_mastery</option>
+            <option value="uncategorized">uncategorized</option>
+          </select>
+        </div>
+
         <div id="jobsContainer">
           {% if not jobs %}
           <div class="empty" id="emptyState">
@@ -1065,7 +1158,7 @@ Type IRON if this hit.
           {% else %}
           <div class="jobs-list" id="jobsList">
             {% for job in jobs %}
-            <div class="job-card" id="job-{{ job.id }}" data-status="{{ job.status }}">
+            <div class="job-card" id="job-{{ job.id }}" data-status="{{ job.status }}" data-category="{{ job.category or 'uncategorized' }}">
               <div class="job-top">
                 <div class="job-name">{{ job.reel_name }}</div>
                 <span class="status status-{{ job.status }}">{{ job.status }}</span>
@@ -1085,11 +1178,20 @@ Type IRON if this hit.
                     <span class="job-meta-label">Created</span>
                     <span class="job-meta-val">{{ job.created_at }}</span>
                   </div>
+                  <div class="job-meta-item">
+                    <span class="cat-pill">🏷 {{ job.category or 'uncategorized' }}</span>
+                  </div>
                 </div>
 
                 {% if job.upload_time %}
                 <div style="margin-top:6px;">
                   <span class="upload-at-badge">📅 {{ job.upload_time }}</span>
+                </div>
+                {% endif %}
+
+                {% if job.status == 'done' and job.views %}
+                <div style="margin-top:6px;">
+                  <span class="views-badge">👁 {{ job.views | int }} views</span>
                 </div>
                 {% endif %}
 
@@ -1618,16 +1720,19 @@ function refreshJobs() {
       });
 
       updateStats(jobs);
+      applyCategoryFilter();
     })
     .catch(() => {});
 }
 
 function buildJobCard(job) {
   const id = String(job.id);
+  const cat = escHtml(job.category || 'uncategorized');
   const div = document.createElement('div');
   div.className = 'job-card';
   div.id = `job-${id}`;
-  div.dataset.status = job.status;
+  div.dataset.status   = job.status;
+  div.dataset.category = job.category || 'uncategorized';
 
   div.innerHTML = `
     <div class="job-top">
@@ -1639,16 +1744,19 @@ function buildJobCard(job) {
         <div class="job-meta-item"><span class="job-meta-label">Batch</span><span class="job-meta-val">${escHtml(String(job.batch_id).slice(0,8))}…</span></div>
         <div class="job-meta-item"><span class="job-meta-label">#</span><span class="job-meta-val">${escHtml(id)}</span></div>
         <div class="job-meta-item"><span class="job-meta-label">Created</span><span class="job-meta-val">${escHtml(job.created_at)}</span></div>
+        <div class="job-meta-item"><span class="cat-pill">🏷 ${cat}</span></div>
       </div>
       ${job.upload_time ? `<div style="margin-top:6px"><span class="upload-at-badge">📅 ${escHtml(job.upload_time)}</span></div>` : ''}
+      ${job.status === 'done' && job.views ? `<div style="margin-top:6px" id="viewsbadge-${id}"><span class="views-badge">👁 ${job.views} views</span></div>` : `<div style="margin-top:6px" id="viewsbadge-${id}"></div>`}
       ${job.yt_video_id ? `<div style="margin-top:4px">🔗 <a href="https://youtu.be/${escHtml(job.yt_video_id)}" target="_blank">youtu.be/${escHtml(job.yt_video_id)}</a></div>` : ''}
       ${job.output_path ? `<div style="margin-top:4px;color:var(--text3)">📁 ${escHtml(job.output_path)}</div>` : ''}
     </div>
     ${job.error_msg ? `<div class="job-err">⚠ ${escHtml(job.error_msg)}</div>` : ''}
     <div class="job-actions">
-      ${['failed','pending'].includes(job.status) ? `<button class="btn btn-sm btn-retry" onclick="retryJob('${id}')">↩ Retry</button>` : ''}
+      ${['failed','pending'].includes(job.status) ? `<button class="btn btn-sm btn-retry" onclick="retryJob('${id}')">&#8617; Retry</button>` : ''}
       ${job.status === 'rendered' ? '' : ''}
-      <button class="btn btn-sm btn-del" onclick="deleteJob('${id}')">✕</button>
+      ${job.status === 'done' && job.yt_video_id ? `<button class="btn btn-sm btn-refresh-stats" id="statsBtn-${id}" onclick="refreshStats('${id}')">&#128200; Stats</button>` : ''}
+      <button class="btn btn-sm btn-del" onclick="deleteJob('${id}')">&#10005;</button>
     </div>
   `;
 
@@ -1698,8 +1806,41 @@ function escHtml(str) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// CATEGORY FILTER
+// ═══════════════════════════════════════════════════════════
+function applyCategoryFilter() {
+  const selected = (document.getElementById('categoryFilter')?.value || '').trim();
+  document.querySelectorAll('.job-card').forEach(card => {
+    if (!selected) {
+      card.style.display = '';
+    } else {
+      card.style.display = card.dataset.category === selected ? '' : 'none';
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
 // ACTIONS
 // ═══════════════════════════════════════════════════════════
+async function refreshStats(id) {
+  const btn = document.getElementById(`statsBtn-${id}`);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+  try {
+    const res  = await fetch(`/jobs/${id}/refresh_stats`, { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    // Update the badge in-place
+    const badgeWrap = document.getElementById(`viewsbadge-${id}`);
+    if (badgeWrap !== null) {
+      badgeWrap.innerHTML = `<span class="views-badge">👁 ${data.viewCount.toLocaleString()} views</span>`;
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '📈 Stats'; }
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '📈 Stats'; }
+    alert(`Stats fetch failed: ${e.message}`);
+  }
+}
+
 async function retryJob(id) {
   await fetch(`/jobs/${id}/retry`, { method: 'POST' });
   refreshJobs();
