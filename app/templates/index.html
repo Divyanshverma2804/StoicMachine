@@ -1112,6 +1112,9 @@
   .bar-fill.green { background: linear-gradient(90deg,#3fb950,#39d353); }
   .analytics-views-note { font-size: 11px; color: var(--text3); font-style: italic; }
 
+  /* queued diary badge */
+  .diary-source-badge.queued { background:rgba(188,140,255,.12); color:#bc8cff; border:1px solid rgba(188,140,255,.2); }
+
 </style>
 </head>
 <body>
@@ -1521,7 +1524,10 @@ Type IRON if this hit.
 
         <!-- Right: typewriter editor -->
         <div class="diary-editor-pane">
-          <input class="diary-title-input" id="diaryTitle" placeholder="Entry title…" />
+          <input class="diary-title-input" id="diaryTitle" placeholder="Entry title…"
+            onblur="_saveTitleOnBlur()"
+            onkeydown="if(event.key==='Enter'){this.blur();event.preventDefault();}"
+          />
           <textarea class="diary-typewriter" id="diaryContent"
             placeholder="# ReelName: silence_wins
 
@@ -2423,6 +2429,31 @@ function confirmLogout() {
 let _diaryEntries = [];
 let _activeDiaryId = null;
 
+async function _saveTitleOnBlur() {
+  if (!_activeDiaryId) return;
+  const newTitle = document.getElementById('diaryTitle')?.value?.trim();
+  if (!newTitle) return;
+  // Check if it actually changed
+  const entry = _diaryEntries.find(e => e.id === _activeDiaryId);
+  if (entry && entry.title === newTitle) return;   // no change
+
+  const fd = new FormData();
+  fd.append('title', newTitle);
+  try {
+    const res = await fetch(`/diary/${_activeDiaryId}`, { method: 'PATCH', body: fd });
+    if (res.ok) {
+      // Update local cache so re-renders use the new title
+      if (entry) entry.title = newTitle;
+      // Update the card in the sidebar directly, no full re-render needed
+      const card = document.getElementById(`dcard-${_activeDiaryId}`);
+      const titleEl = card?.querySelector('.diary-card-title');
+      if (titleEl) titleEl.textContent = newTitle;
+      const hint = document.getElementById('diarySaveHint');
+      if (hint) { hint.textContent = 'Title saved'; setTimeout(() => hint.textContent = '', 1500); }
+    }
+  } catch(_) { /* silent fail — user can always use Save Draft button */ }
+}
+
 async function loadDiary() {
   const list = document.getElementById('diaryList');
   try {
@@ -2443,8 +2474,10 @@ function renderDiaryList(entries) {
   }
   list.innerHTML = entries.map(e => {
     const badge = e.source === 'posted'
-      ? `<span class="diary-source-badge posted">✅ posted</span>`
-      : `<span class="diary-source-badge draft">✏️ draft</span>`;
+      ? `<span class="diary-source-badge posted">&#x2705; posted</span>`
+      : e.source === 'queued'
+        ? `<span class="diary-source-badge queued">&#x1F4E5; queued</span>`
+        : `<span class="diary-source-badge draft">&#x270F; draft</span>`;
     const date  = e.updated_at ? e.updated_at.slice(0,10) : '';
     const tag   = e.tag ? `<span style="font-size:10px;color:var(--text3)">${escHtml(e.tag)}</span>` : '';
     const active = _activeDiaryId === e.id ? ' active' : '';

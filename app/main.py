@@ -2,7 +2,7 @@
 main.py — FastAPI web portal for ReelForge
 """
 import re, json, uuid, logging, os, secrets, threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -165,6 +165,23 @@ async def submit_content(
 
     db.commit()
     db.close()
+
+    # Auto-save the raw script to the diary as a 'queued' entry
+    try:
+        from datetime import timezone as _tz
+        _now_ist = datetime.now(_tz(timedelta(hours=5, minutes=30)))
+        _title   = f"Batch · {len(created)} reel{'s' if len(created) != 1 else ''} · {_now_ist.strftime('%d %b %Y %H:%M IST')}"
+        _db2 = Session()
+        _db2.add(ReelDraft(
+            title   = _title,
+            content = content_md,
+            source  = "queued",
+            tag     = None,
+        ))
+        _db2.commit()
+        _db2.close()
+    except Exception as _diary_exc:
+        logging.getLogger("diary").warning(f"Auto-save queued batch to diary failed: {_diary_exc}")
 
     return RedirectResponse(url=f"/?batch={batch_id}", status_code=303)
 
