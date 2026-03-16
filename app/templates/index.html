@@ -1017,6 +1017,31 @@
   .privacy-badge.unl  { background: rgba(210,153,34,.1); color:#d29922; border:1px solid rgba(210,153,34,.22); }
   .privacy-badge.priv { background: rgba(248,81,73,.1);  color:#f85149; border:1px solid rgba(248,81,73,.22); }
 
+  /* ── Per-job privacy row ── */
+  .job-privacy-row {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 6px 0 4px;
+  }
+  .job-priv-chip {
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1.5px solid var(--border1);
+    color: var(--text3);
+    background: transparent;
+    transition: all .15s;
+  }
+  .job-priv-chip:hover { border-color: var(--text2); color: var(--text1); }
+  .job-priv-chip.active-pub  { background:rgba(57,211,83,.15);  border-color:#39d353; color:#39d353; box-shadow:0 0 6px rgba(57,211,83,.3); }
+  .job-priv-chip.active-unl  { background:rgba(210,153,34,.15); border-color:#d29922; color:#d29922; box-shadow:0 0 6px rgba(210,153,34,.3); }
+  .job-priv-chip.active-priv { background:rgba(248,81,73,.15);  border-color:#f85149; color:#f85149; box-shadow:0 0 6px rgba(248,81,73,.3); }
+  .job-priv-hint { font-size:10px; color:var(--text3); font-family:'DM Mono',monospace; margin-left:3px; }
+
 </style>
 </head>
 <body>
@@ -1303,6 +1328,26 @@ Type IRON if this hit.
                   <div id="jd_ist_{{ job.id }}" style="font-size:10px;color:var(--warn-bright);font-family:'DM Mono',monospace;margin-top:3px;"></div>
                   <button class="btn btn-sm btn-time" onclick="submitJobUploadTime('{{ job.id }}')">📅 Set</button>
                 </div>
+
+                <!-- Per-job privacy chips -->
+                <div class="job-privacy-row" id="privrow-{{ job.id }}">
+                  <button class="job-priv-chip {{ 'active-pub' if job.privacy == 'public' else '' }}"
+                          onclick="setJobPrivacy('{{ job.id }}','public')">
+                    🌍 Public
+                  </button>
+                  <button class="job-priv-chip {{ 'active-unl' if job.privacy == 'unlisted' else '' }}"
+                          onclick="setJobPrivacy('{{ job.id }}','unlisted')">
+                    🔗 Unlisted
+                  </button>
+                  <button class="job-priv-chip {{ 'active-priv' if job.privacy == 'private' else '' }}"
+                          onclick="setJobPrivacy('{{ job.id }}','private')">
+                    🔒 Private
+                  </button>
+                  <span class="job-priv-hint" id="privhint-{{ job.id }}">
+                    {{ job.privacy or 'env default' }}
+                  </span>
+                </div>
+
                 <button class="btn btn-sm btn-upload-now" id="upnow-{{ job.id }}" onclick="uploadNow('{{ job.id }}')" title="Upload to YouTube right now">⬆ Upload Now</button>
                 {% endif %}
 
@@ -1659,6 +1704,41 @@ async function submitJobUploadTime(jobId) {
   refreshJobs();
 }
 
+async function setJobPrivacy(jobId, privacy) {
+  const clsMap = { public: 'active-pub', unlisted: 'active-unl', private: 'active-priv' };
+
+  // Optimistic UI update — highlight the clicked chip immediately
+  const row = document.getElementById(`privrow-${jobId}`);
+  if (row) {
+    row.querySelectorAll('.job-priv-chip').forEach(btn => {
+      btn.classList.remove('active-pub', 'active-unl', 'active-priv');
+    });
+    // find the button whose onclick contains this privacy value and activate it
+    row.querySelectorAll('.job-priv-chip').forEach(btn => {
+      if (btn.getAttribute('onclick')?.includes(`'${privacy}'`)) {
+        btn.classList.add(clsMap[privacy]);
+      }
+    });
+  }
+
+  const hint = document.getElementById(`privhint-${jobId}`);
+  if (hint) hint.textContent = '…saving';
+
+  const formData = new FormData();
+  formData.append('privacy', privacy);
+
+  try {
+    const res  = await fetch(`/jobs/${jobId}/set_privacy`, { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.ok && hint) {
+      hint.textContent = `${privacy} ✓`;
+      setTimeout(() => { if (hint) hint.textContent = privacy; }, 2000);
+    }
+  } catch(e) {
+    if (hint) hint.textContent = 'error';
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 // STATS UPDATE
 // ═══════════════════════════════════════════════════════════
@@ -1841,6 +1921,8 @@ function buildJobCard(job) {
     const actions = div.querySelector('.job-actions');
     const picker = buildJobPickerHTML(id);
     actions.insertBefore(picker, actions.querySelector('.btn-del'));
+    const privRow = buildPrivacyPickerHTML(id, job.privacy);
+    actions.insertBefore(privRow, actions.querySelector('.btn-del'));
     const upBtn = buildUploadNowBtn(id);
     actions.insertBefore(upBtn, actions.querySelector('.btn-del'));
   }
@@ -1865,6 +1947,24 @@ function buildJobPickerHTML(id) {
     </div>
     <button class="btn btn-sm btn-time" onclick="submitJobUploadTime('${id}')">📅 Set</button>
   `;
+  return wrap;
+}
+
+function buildPrivacyPickerHTML(id, currentPrivacy) {
+  const wrap = document.createElement('div');
+  wrap.className = 'job-privacy-row';
+  wrap.id = `privrow-${id}`;
+  const opts = [
+    { value: 'public',   icon: '🌍', cls: 'active-pub'  },
+    { value: 'unlisted', icon: '🔗', cls: 'active-unl'  },
+    { value: 'private',  icon: '🔒', cls: 'active-priv' },
+  ];
+  const btns = opts.map(o => {
+    const active = currentPrivacy === o.value ? ` ${o.cls}` : '';
+    return `<button class="job-priv-chip${active}" onclick="setJobPrivacy('${id}','${o.value}')">${o.icon} ${o.value}</button>`;
+  }).join('');
+  const hint = currentPrivacy || 'env default';
+  wrap.innerHTML = `${btns}<span class="job-priv-hint" id="privhint-${id}">${hint}</span>`;
   return wrap;
 }
 

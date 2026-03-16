@@ -353,6 +353,23 @@ async def set_upload_time(job_id: int, upload_time: str = Form(...), _user: str 
     return {"ok": True}
 
 
+@app.post("/jobs/{job_id}/set_privacy")
+async def set_privacy(job_id: int, privacy: str = Form(...), _user: str = Depends(require_auth)):
+    _VALID = {"public", "private", "unlisted"}
+    if privacy not in _VALID:
+        raise HTTPException(400, f"privacy must be one of {_VALID}")
+    db  = Session()
+    job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
+    if not job:
+        db.close()
+        raise HTTPException(404, "Job not found")
+    job.privacy    = privacy
+    job.updated_at = datetime.utcnow()
+    db.commit()
+    db.close()
+    return {"ok": True, "privacy": privacy}
+
+
 @app.delete("/jobs/{job_id}")
 async def delete_job(job_id: int, _user: str = Depends(require_auth)):
     db  = Session()
