@@ -106,10 +106,11 @@ def upload_tick():
             )
             tags = extract_tags_from_script(job.script)
             video_id = upload_video(
-                video_path  = job.output_path,
-                title       = title,
-                description = description,
-                tags        = tags,
+                video_path       = job.output_path,
+                title            = title,
+                description      = description,
+                tags             = tags,
+                privacy_override = job.privacy,   # None → falls back to YT_PRIVACY env
             )
             job.yt_video_id = video_id
             job.status      = JobStatus.done

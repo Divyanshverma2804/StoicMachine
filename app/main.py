@@ -115,6 +115,7 @@ async def submit_content(
     content_md: str  = Form(...),
     upload_time: str = Form(""),       # ISO datetime string, optional global default
     per_reel_times: str = Form("{}"),  # JSON: {"reel_name": "ISO datetime", ...}
+    privacy: str     = Form(""),        # "public" | "private" | "unlisted" | "" (use env)
     _user: str = Depends(require_auth),
 ):
     reels = parse_content_md(content_md)
@@ -157,6 +158,7 @@ async def submit_content(
             upload_time   = upload_dt,
             status        = JobStatus.pending,
             category      = reel.get("category", "uncategorized"),
+            privacy       = privacy if privacy in {"public", "private", "unlisted"} else None,
         )
         db.add(job)
         created.append(reel["name"])

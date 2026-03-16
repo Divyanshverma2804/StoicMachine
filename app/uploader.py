@@ -176,14 +176,19 @@ def upload_video(
     title: str,
     description: str = "",
     tags: list[str] | None = None,
+    privacy_override: str | None = None,
 ) -> str:
     """
     Uploads video_path to YouTube.  Returns the YouTube video ID.
     `title` and `description` should already be pre-built by
     build_yt_title_and_description(); `tags` is the raw tag list for the
     API snippet (separate from hashtags embedded in title/description).
+    `privacy_override` accepts 'public', 'private', or 'unlisted'.
+    When None, falls back to the YT_PRIVACY env var.
     """
-    log.info(f"[upload] Starting upload: {title!r}")
+    _VALID_PRIVACY = {"public", "private", "unlisted"}
+    privacy = privacy_override if privacy_override in _VALID_PRIVACY else YT_PRIVACY
+    log.info(f"[upload] Starting upload: {title!r}  privacy={privacy!r}")
     creds   = _get_credentials()
     youtube = build("youtube", "v3", credentials=creds)
 
@@ -195,7 +200,7 @@ def upload_video(
             "categoryId":  YT_CATEGORY_ID,
         },
         "status": {
-            "privacyStatus": YT_PRIVACY,
+            "privacyStatus": privacy,
             "selfDeclaredMadeForKids": False,
         },
     }

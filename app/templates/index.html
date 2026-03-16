@@ -962,6 +962,61 @@
   }
   .btn-refresh-stats:hover { background: rgba(57,211,83,0.18); }
 
+  /* ── Privacy toggle ── */
+  .privacy-toggle {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .privacy-toggle input[type="radio"] { display: none; }
+  .privacy-chip {
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    cursor: pointer;
+    border: 1.5px solid var(--border1);
+    color: var(--text2);
+    background: var(--surface2);
+    transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
+    user-select: none;
+  }
+  /* checked states */
+  #priv_public:checked ~ label[for="priv_public"] {
+    background: rgba(57,211,83,.15);
+    border-color: #39d353;
+    color: #39d353;
+    box-shadow: 0 0 8px rgba(57,211,83,.3);
+  }
+  #priv_unlisted:checked ~ label[for="priv_unlisted"] {
+    background: rgba(210,153,34,.15);
+    border-color: #d29922;
+    color: #d29922;
+    box-shadow: 0 0 8px rgba(210,153,34,.3);
+  }
+  #priv_private:checked ~ label[for="priv_private"] {
+    background: rgba(248,81,73,.15);
+    border-color: #f85149;
+    color: #f85149;
+    box-shadow: 0 0 8px rgba(248,81,73,.3);
+  }
+  /* privacy badge on job cards */
+  .privacy-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: 'DM Mono', monospace;
+  }
+  .privacy-badge.pub  { background: rgba(57,211,83,.1);  color:#39d353; border:1px solid rgba(57,211,83,.22); }
+  .privacy-badge.unl  { background: rgba(210,153,34,.1); color:#d29922; border:1px solid rgba(210,153,34,.22); }
+  .privacy-badge.priv { background: rgba(248,81,73,.1);  color:#f85149; border:1px solid rgba(248,81,73,.22); }
+
 </style>
 </head>
 <body>
@@ -1088,6 +1143,27 @@ Type IRON if this hit.
               <span style="color:var(--border2);margin:0 6px;">→</span>
               <span style="color:var(--warn-bright);font-size:10px;">IST:</span>
               <span id="g_preview_ist" style="color:var(--warn-bright);"></span>
+            </div>
+          </div>
+
+          <!-- Privacy toggle -->
+          <div class="field" style="margin-top:18px;">
+            <div class="field-label">
+              <span>Upload Visibility</span>
+              <span class="field-hint">Overrides <code>YT_PRIVACY</code> env var for this batch</span>
+            </div>
+            <div class="privacy-toggle" style="margin-top:8px;">
+              <!-- The radio inputs must PRECEDE their labels in DOM for the CSS sibling selector -->
+              <input type="radio" name="privacy" id="priv_public"   value="public">
+              <label class="privacy-chip" for="priv_public">🌍 Public</label>
+
+              <input type="radio" name="privacy" id="priv_unlisted" value="unlisted">
+              <label class="privacy-chip" for="priv_unlisted">🔗 Unlisted</label>
+
+              <input type="radio" name="privacy" id="priv_private"  value="private">
+              <label class="privacy-chip" for="priv_private">🔒 Private</label>
+
+              <span style="font-size:10px;color:var(--text3);margin-left:4px;" id="privHint">using env default</span>
             </div>
           </div>
 
@@ -1745,6 +1821,7 @@ function buildJobCard(job) {
         <div class="job-meta-item"><span class="job-meta-label">#</span><span class="job-meta-val">${escHtml(id)}</span></div>
         <div class="job-meta-item"><span class="job-meta-label">Created</span><span class="job-meta-val">${escHtml(job.created_at)}</span></div>
         <div class="job-meta-item"><span class="cat-pill">🏷 ${cat}</span></div>
+        ${job.privacy ? `<div class="job-meta-item"><span class="privacy-badge ${job.privacy === 'public' ? 'pub' : job.privacy === 'unlisted' ? 'unl' : 'priv'}">${job.privacy === 'public' ? '🌍' : job.privacy === 'unlisted' ? '🔗' : '🔒'} ${job.privacy}</span></div>` : ''}
       </div>
       ${job.upload_time ? `<div style="margin-top:6px"><span class="upload-at-badge">📅 ${escHtml(job.upload_time)}</span></div>` : ''}
       ${job.status === 'done' && job.views ? `<div style="margin-top:6px" id="viewsbadge-${id}"><span class="views-badge">👁 ${job.views} views</span></div>` : `<div style="margin-top:6px" id="viewsbadge-${id}"></div>`}
@@ -1905,6 +1982,19 @@ document.getElementById('submitForm').addEventListener('submit', function() {
   btn.disabled = true;
   btn.style.opacity = '0.7';
 });
+
+// ═══════════════════════════════════════════════════════════
+// PRIVACY TOGGLE HINT
+// ═══════════════════════════════════════════════════════════
+(function() {
+  const labels = { public: '🌍 Public — visible to everyone', unlisted: '🔗 Unlisted — link-only', private: '🔒 Private — only you' };
+  document.querySelectorAll('input[name="privacy"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      const hint = document.getElementById('privHint');
+      if (hint) hint.textContent = labels[radio.value] || 'using env default';
+    });
+  });
+})();
 
 // ═══════════════════════════════════════════════════════════
 // INIT
