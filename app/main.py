@@ -286,11 +286,13 @@ def _do_upload_now(job_id: int):
             extra_description = job.script[:500],
         )
         tags     = extract_tags_from_script(job.script)
+        privacy  = job.privacy   # per-job toggle — None falls back to YT_PRIVACY env
         video_id = upload_video(
-            video_path  = job.output_path,
-            title       = title,
-            description = description,
-            tags        = tags,
+            video_path       = job.output_path,
+            title            = title,
+            description      = description,
+            tags             = tags,
+            privacy_override = privacy,
         )
         job.yt_video_id = video_id
         job.status      = JobStatus.done

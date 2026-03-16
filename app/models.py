@@ -53,7 +53,7 @@ class ReelJob(Base):
             "id":           self.id,
             "batch_id":     self.batch_id,
             "reel_name":    self.reel_name,
-            "status":       self.status,
+            "status":       self.status.value,   # emit plain string e.g. 'rendered', not 'JobStatus.rendered'
             "upload_time":  self.upload_time.isoformat() if self.upload_time else None,
             "output_path":  self.output_path,
             "yt_video_id":  self.yt_video_id,

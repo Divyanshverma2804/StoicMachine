@@ -1259,10 +1259,10 @@ Type IRON if this hit.
           {% else %}
           <div class="jobs-list" id="jobsList">
             {% for job in jobs %}
-            <div class="job-card" id="job-{{ job.id }}" data-status="{{ job.status }}" data-category="{{ job.category or 'uncategorized' }}">
+            <div class="job-card" id="job-{{ job.id }}" data-status="{{ job.status.value }}" data-category="{{ job.category or 'uncategorized' }}">
               <div class="job-top">
                 <div class="job-name">{{ job.reel_name }}</div>
-                <span class="status status-{{ job.status }}">{{ job.status }}</span>
+                <span class="status status-{{ job.status.value }}">{{ job.status.value }}</span>
               </div>
 
               <div class="job-meta">
