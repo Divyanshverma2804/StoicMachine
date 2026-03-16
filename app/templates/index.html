@@ -1042,6 +1042,76 @@
   .job-priv-chip.active-priv { background:rgba(248,81,73,.15);  border-color:#f85149; color:#f85149; box-shadow:0 0 6px rgba(248,81,73,.3); }
   .job-priv-hint { font-size:10px; color:var(--text3); font-family:'DM Mono',monospace; margin-left:3px; }
 
+  /* ── Diary tab ── */
+  .diary-layout { display: grid; grid-template-columns: 320px 1fr; gap: 18px; padding: 22px 0; }
+  .diary-sidebar { display: flex; flex-direction: column; gap: 10px; }
+  .diary-search {
+    background: var(--card2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; color: var(--text); font-family: inherit; font-size: 12px; width: 100%;
+    outline: none;
+  }
+  .diary-search:focus { border-color: var(--accent); }
+  .diary-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: calc(100vh - 230px); padding-right: 4px; }
+  .diary-card {
+    background: var(--card2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .diary-card:hover { border-color: var(--accent); background: var(--card); }
+  .diary-card.active { border-color: var(--accent); background: rgba(88,166,255,.07); }
+  .diary-card-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .diary-card-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .diary-source-badge { padding: 2px 7px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+  .diary-source-badge.posted { background:rgba(57,211,83,.12); color:#39d353; border:1px solid rgba(57,211,83,.2); }
+  .diary-source-badge.draft  { background:rgba(210,153,34,.12); color:#d29922; border:1px solid rgba(210,153,34,.2); }
+  .diary-date { font-size: 10px; color: var(--text3); font-family: 'DM Mono', monospace; }
+  .diary-editor-pane { display: flex; flex-direction: column; gap: 10px; }
+  .diary-title-input {
+    background: var(--card2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 14px; color: var(--text); font-family: 'Syne', inherit; font-size: 15px;
+    font-weight: 700; width: 100%; outline: none;
+  }
+  .diary-title-input:focus { border-color: var(--accent); }
+  .diary-typewriter {
+    flex: 1; background: var(--bg2);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px 24px;
+    color: #c9d1d9;
+    font-family: 'DM Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 13px; line-height: 1.8;
+    resize: none;
+    min-height: 500px;
+    outline: none;
+    tab-size: 2;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
+    transition: border-color .15s;
+  }
+  .diary-typewriter:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(88,166,255,.08); }
+  .diary-actions { display: flex; gap: 8px; align-items: center; }
+  .diary-empty { text-align: center; padding: 40px 20px; color: var(--text3); }
+  .diary-empty .icon { font-size: 32px; margin-bottom: 10px; }
+
+  /* ── Analytics tab ── */
+  .analytics-layout { padding: 22px 0; display: flex; flex-direction: column; gap: 24px; }
+  .analytics-summary { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 12px; }
+  .analytics-stat-card {
+    background: var(--card2); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .analytics-stat-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .analytics-stat-value { font-size: 28px; font-weight: 800; color: var(--text); }
+  .analytics-stat-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .analytics-table-wrap { overflow-x: auto; }
+  table.analytics-tbl { width: 100%; border-collapse: collapse; }
+  table.analytics-tbl th { text-align:left; padding: 8px 14px; font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:.4px; border-bottom:1px solid var(--border); }
+  table.analytics-tbl td { padding: 11px 14px; font-size:13px; border-bottom:1px solid rgba(48,54,61,.5); }
+  table.analytics-tbl tr:hover td { background: var(--card2); }
+  .bar-wrap { width: 100%; background: var(--border); border-radius: 4px; height: 8px; overflow: hidden; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--purple)); border-radius: 4px; transition: width .5s; }
+  .bar-fill.green { background: linear-gradient(90deg,#3fb950,#39d353); }
+  .analytics-views-note { font-size: 11px; color: var(--text3); font-style: italic; }
+
 </style>
 </head>
 <body>
@@ -1060,6 +1130,12 @@
       </button>
       <button class="tab-btn" id="tabCalendarBtn" onclick="switchTab('calendar')">
         📅 Calendar
+      </button>
+      <button class="tab-btn" id="tabDiaryBtn" onclick="switchTab('diary')">
+        📓 Diary
+      </button>
+      <button class="tab-btn" id="tabAnalyticsBtn" onclick="switchTab('analytics')">
+        📊 Analytics
       </button>
     </nav>
 
@@ -1426,6 +1502,105 @@ Type IRON if this hit.
       </div>
     </div>
   </div>
+
+  <!-- ── TAB: Diary ── -->
+  <div id="tabDiary" class="tab-panel">
+    <div class="container">
+      <div class="diary-layout">
+
+        <!-- Sidebar: entry list -->
+        <div class="diary-sidebar">
+          <input class="diary-search" id="diarySearch" placeholder="🔍 Search scripts…" oninput="filterDiary()">
+          <div class="diary-actions">
+            <button class="btn btn-primary" style="font-size:11px;padding:6px 14px" onclick="newDiaryDraft()">+ New Draft</button>
+          </div>
+          <div class="diary-list" id="diaryList">
+            <div class="diary-empty"><div class="icon">📝</div><p>Loading…</p></div>
+          </div>
+        </div>
+
+        <!-- Right: typewriter editor -->
+        <div class="diary-editor-pane">
+          <input class="diary-title-input" id="diaryTitle" placeholder="Entry title…" />
+          <textarea class="diary-typewriter" id="diaryContent"
+            placeholder="# ReelName: silence_wins
+
+## Hook:
+Most people are loud...
+
+## Conflict:
+They think volume equals strength.
+
+## Shift:
+Silence is power.
+
+## Punch:
+The quietest person in the room is often the most dangerous.
+
+## Engage:
+Type IRON if this hit."></textarea>
+          <div class="diary-actions">
+            <button class="btn btn-primary" style="font-size:11px;padding:7px 16px" onclick="saveDiaryEntry()" id="diarysSaveBtn">💾 Save Draft</button>
+            <button class="btn" style="font-size:11px;padding:7px 14px;background:var(--card2);border:1px solid var(--border);color:var(--text2)" onclick="openInQueue()">&#8657; Open in Queue</button>
+            <button class="btn" style="font-size:11px;padding:7px 14px;background:transparent;border:1px solid var(--border);color:var(--fail)" onclick="deleteDiaryEntry()">&#10005; Delete</button>
+            <span id="diarySaveHint" style="font-size:11px;color:var(--text3);margin-left:4px;"></span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div><!-- end #tabDiary -->
+
+  <!-- ── TAB: Analytics ── -->
+  <div id="tabAnalytics" class="tab-panel">
+    <div class="container">
+      <div class="analytics-layout">
+
+        <!-- Summary cards -->
+        <div class="analytics-summary" id="analyticsSummary">
+          <div class="analytics-stat-card"><div class="analytics-stat-label">Total Reels</div><div class="analytics-stat-value" id="aTotal">—</div></div>
+          <div class="analytics-stat-card"><div class="analytics-stat-label">Published</div><div class="analytics-stat-value" id="aDone" style="color:var(--success)">—</div></div>
+          <div class="analytics-stat-card"><div class="analytics-stat-label">Total Views</div><div class="analytics-stat-value" id="aViews" style="color:var(--accent)">—</div></div>
+          <div class="analytics-stat-card"><div class="analytics-stat-label">Avg Views / Reel</div><div class="analytics-stat-value" id="aAvgViews" style="color:var(--purple)">—</div><div class="analytics-stat-sub">across all published reels</div></div>
+          <div class="analytics-stat-card"><div class="analytics-stat-label">Failed</div><div class="analytics-stat-value" id="aFailed" style="color:var(--fail)">—</div></div>
+        </div>
+
+        <!-- Category breakdown table -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon blue">📊</div>
+            <div>
+              <div class="card-title">Category Breakdown</div>
+              <div class="card-subtitle">Views pulled from YouTube Data API every 6h &bull; <button class="btn" style="font-size:10px;padding:3px 10px;background:transparent;border:1px solid var(--border);color:var(--text2)" onclick="loadAnalytics()">&#8635; Refresh</button></div>
+            </div>
+          </div>
+          <div class="analytics-table-wrap">
+            <table class="analytics-tbl">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Total</th>
+                  <th>Done</th>
+                  <th>Failed</th>
+                  <th>Avg Views</th>
+                  <th>Success Bar</th>
+                </tr>
+              </thead>
+              <tbody id="analyticsTableBody">
+                <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:24px">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="analytics-views-note" style="padding:10px 14px 14px">
+            ⚠️ Views are synced every 6h for all published reels via the YouTube readonly token.
+            Reels with 0 views haven't been synced yet — click Refresh or wait for the next sync cycle.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </div><!-- end #tabAnalytics -->
+
 
 <script>
 // ═══════════════════════════════════════════════════════════
@@ -2240,6 +2415,211 @@ async function calPopDelete() {
 // ═══════════════════════════════════════════════════════════
 function confirmLogout() {
   return confirm('Close this session? You will need to re-enter your password.');
+}
+
+// ═══════════════════════════════════════════════════════════
+// DIARY
+// ═══════════════════════════════════════════════════════════
+let _diaryEntries = [];
+let _activeDiaryId = null;
+
+async function loadDiary() {
+  const list = document.getElementById('diaryList');
+  try {
+    const entries = await fetch('/diary').then(r => r.json());
+    _diaryEntries = entries;
+    renderDiaryList(entries);
+  } catch(e) {
+    if (list) list.innerHTML = `<div class="diary-empty"><p style="color:var(--fail)">Failed to load diary.</p></div>`;
+  }
+}
+
+function renderDiaryList(entries) {
+  const list = document.getElementById('diaryList');
+  if (!list) return;
+  if (entries.length === 0) {
+    list.innerHTML = `<div class="diary-empty"><div class="icon">📝</div><p>No entries yet.<br>Upload a reel or save a draft.</p></div>`;
+    return;
+  }
+  list.innerHTML = entries.map(e => {
+    const badge = e.source === 'posted'
+      ? `<span class="diary-source-badge posted">✅ posted</span>`
+      : `<span class="diary-source-badge draft">✏️ draft</span>`;
+    const date  = e.updated_at ? e.updated_at.slice(0,10) : '';
+    const tag   = e.tag ? `<span style="font-size:10px;color:var(--text3)">${escHtml(e.tag)}</span>` : '';
+    const active = _activeDiaryId === e.id ? ' active' : '';
+    return `<div class="diary-card${active}" id="dcard-${e.id}" onclick="openDiaryEntry(${e.id})">
+      <div class="diary-card-title">${escHtml(e.title)}</div>
+      <div class="diary-card-meta">${badge}${tag}<span class="diary-date">${date}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function filterDiary() {
+  const q = (document.getElementById('diarySearch')?.value || '').toLowerCase();
+  const filtered = _diaryEntries.filter(e =>
+    e.title.toLowerCase().includes(q) ||
+    (e.content || '').toLowerCase().includes(q) ||
+    (e.tag || '').toLowerCase().includes(q)
+  );
+  renderDiaryList(filtered);
+}
+
+function openDiaryEntry(id) {
+  const entry = _diaryEntries.find(e => e.id === id);
+  if (!entry) return;
+  _activeDiaryId = id;
+  document.getElementById('diaryTitle').value   = entry.title;
+  document.getElementById('diaryContent').value  = entry.content;
+  document.getElementById('diarySaveHint').textContent = '';
+  // Re-render list to update active highlight
+  filterDiary();
+}
+
+function newDiaryDraft() {
+  _activeDiaryId = null;
+  document.getElementById('diaryTitle').value   = '';
+  document.getElementById('diaryContent').value  = '';
+  document.getElementById('diarySaveHint').textContent = 'New draft — write and save.';
+  document.getElementById('diaryTitle').focus();
+  // Remove active highlight from all cards
+  document.querySelectorAll('.diary-card').forEach(c => c.classList.remove('active'));
+}
+
+async function saveDiaryEntry() {
+  const title   = document.getElementById('diaryTitle')?.value?.trim() || 'Untitled';
+  const content = document.getElementById('diaryContent')?.value || '';
+  const hint    = document.getElementById('diarySaveHint');
+  if (hint) hint.textContent = 'Saving…';
+
+  const fd = new FormData();
+  fd.append('title',   title);
+  fd.append('content', content);
+
+  let res;
+  if (_activeDiaryId) {
+    res = await fetch(`/diary/${_activeDiaryId}`, { method: 'PATCH', body: fd });
+  } else {
+    fd.append('tag', '');
+    res = await fetch('/diary', { method: 'POST', body: fd });
+  }
+
+  if (res.ok) {
+    const data = await res.json();
+    _activeDiaryId = data.id;
+    if (hint) hint.textContent = 'Saved ✔';
+    setTimeout(() => { if (hint) hint.textContent = ''; }, 2500);
+    await loadDiary();
+  } else {
+    if (hint) hint.textContent = 'Error saving!';
+  }
+}
+
+async function deleteDiaryEntry() {
+  if (!_activeDiaryId) return;
+  if (!confirm('Delete this diary entry?')) return;
+  await fetch(`/diary/${_activeDiaryId}`, { method: 'DELETE' });
+  _activeDiaryId = null;
+  document.getElementById('diaryTitle').value   = '';
+  document.getElementById('diaryContent').value  = '';
+  await loadDiary();
+}
+
+function openInQueue() {
+  const content = document.getElementById('diaryContent')?.value || '';
+  if (!content.trim()) return;
+  // Switch to queue tab and paste the script into the content_md textarea
+  switchTab('queue');
+  const ta = document.getElementById('content_md');
+  if (ta) {
+    ta.value = content;
+    ta.dispatchEvent(new Event('input'));
+    ta.focus();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ANALYTICS
+// ═══════════════════════════════════════════════════════════
+async function loadAnalytics() {
+  try {
+    const data = await fetch('/analytics/categories').then(r => r.json());
+
+    // Summary cards
+    let totalAll = 0, totalDone = 0, totalViews = 0, totalFailed = 0;
+    data.forEach(row => {
+      totalAll    += row.total;
+      totalDone   += row.done;
+      totalFailed += row.failed;
+      totalViews  += (row.avg_views * row.done) || 0;  // approximate total
+    });
+    const avgAll = totalDone > 0 ? Math.round(totalViews / totalDone) : 0;
+
+    const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    s('aTotal',    totalAll);
+    s('aDone',     totalDone);
+    s('aViews',    totalViews.toLocaleString());
+    s('aAvgViews', avgAll.toLocaleString());
+    s('aFailed',   totalFailed);
+
+    // Table rows
+    const maxViews = Math.max(...data.map(r => r.avg_views), 1);
+    const maxTotal = Math.max(...data.map(r => r.total), 1);
+    const tbody = document.getElementById('analyticsTableBody');
+    if (!tbody) return;
+    if (data.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:24px">No data yet — publish some reels first.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = data.map(row => {
+      const pct     = Math.round((row.done / Math.max(row.total, 1)) * 100);
+      const viewPct = Math.round((row.avg_views / maxViews) * 100);
+      return `<tr>
+        <td><strong>${escHtml(row.category)}</strong></td>
+        <td>${row.total}</td>
+        <td style="color:var(--success)">${row.done}</td>
+        <td style="color:var(--fail)">${row.failed}</td>
+        <td style="color:var(--accent);font-family:'DM Mono',monospace">${row.avg_views.toLocaleString()}</td>
+        <td style="min-width:140px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="bar-wrap" style="flex:1"><div class="bar-fill green" style="width:${pct}%"></div></div>
+            <span style="font-size:10px;color:var(--text3);width:28px">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    const tbody = document.getElementById('analyticsTableBody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="color:var(--fail);padding:20px">Failed to load analytics. Check server logs.</td></tr>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// TAB SWITCHING (extended)
+// ═══════════════════════════════════════════════════════════
+// Override the existing switchTab to add diary + analytics
+const _origSwitchTab = switchTab;
+function switchTab(tab) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+
+  if (tab === 'queue') {
+    document.getElementById('tabQueue').classList.add('active');
+    document.getElementById('tabQueueBtn').classList.add('active');
+  } else if (tab === 'calendar') {
+    document.getElementById('tabCalendar').classList.add('active');
+    document.getElementById('tabCalendarBtn').classList.add('active');
+    initCalendar();
+    loadUnscheduled();
+  } else if (tab === 'diary') {
+    document.getElementById('tabDiary').classList.add('active');
+    document.getElementById('tabDiaryBtn').classList.add('active');
+    loadDiary();
+  } else if (tab === 'analytics') {
+    document.getElementById('tabAnalytics').classList.add('active');
+    document.getElementById('tabAnalyticsBtn').classList.add('active');
+    loadAnalytics();
+  }
 }
 </script>
 

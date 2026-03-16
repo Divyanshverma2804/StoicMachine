@@ -11,7 +11,7 @@ import logging, json, os
 from datetime import datetime, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from .models import Session, ReelJob, JobStatus
+from .models import Session, ReelJob, ReelDraft, JobStatus
 from .renderer import render_reel
 from .uploader import upload_video, build_yt_title_and_description, extract_tags_from_script, fetch_video_stats
 
@@ -115,6 +115,21 @@ def upload_tick():
             job.yt_video_id = video_id
             job.status      = JobStatus.done
             job.error_msg   = None
+            job.updated_at  = _utcnow()
+            db.commit()   # commit before diary so job.script is readable
+            # Auto-save script to diary (idempotent)
+            try:
+                if not db.query(ReelDraft).filter(ReelDraft.reel_job_id == job.id).first():
+                    db.add(ReelDraft(
+                        title       = job.reel_name,
+                        content     = job.script or "",
+                        source      = "posted",
+                        reel_job_id = job.id,
+                        tag         = job.category or "uncategorized",
+                    ))
+                    db.commit()
+            except Exception as diary_exc:
+                log.warning(f"[scheduler] diary auto-save failed for job #{job.id}: {diary_exc}")
         except Exception as e:
             log.error(f"[scheduler] upload FAILED job #{job.id}: {e}")
             job.retry_count += 1

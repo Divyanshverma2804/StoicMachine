@@ -12,7 +12,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .models import init_db, Session, ReelJob, JobStatus
+from .models import init_db, Session, ReelJob, ReelDraft, JobStatus
 from .scheduler import start_scheduler, stop_scheduler
 from .uploader import upload_video, build_yt_title_and_description, extract_tags_from_script, fetch_video_stats
 
@@ -298,6 +298,8 @@ def _do_upload_now(job_id: int):
         job.status      = JobStatus.done
         job.error_msg   = None
         log.info(f"[upload_now] job #{job_id} uploaded → {video_id}")
+        db.commit()   # commit before diary so job.script is readable
+        _auto_save_diary(job_id)
     except Exception as e:
         log.error(f"[upload_now] FAILED job #{job_id}: {e}")
         job.retry_count += 1
@@ -471,3 +473,107 @@ async def analytics_categories(_user: str = Depends(require_auth)):
         result.append(rec)
 
     return sorted(result, key=lambda x: x["total"], reverse=True)
+
+
+# ═══════════════════════════════════════════════════════════════
+# DIARY API
+# ═══════════════════════════════════════════════════════════════
+
+def _auto_save_diary(job_id: int):
+    """
+    Called after a job finishes uploading.  Saves the reel script to the
+    diary_drafts table as a 'posted' entry.  Idempotent — won't duplicate.
+    """
+    db  = Session()
+    try:
+        job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
+        if not job:
+            return
+        exists = db.query(ReelDraft).filter(ReelDraft.reel_job_id == job_id).first()
+        if exists:
+            return   # already saved
+        entry = ReelDraft(
+            title       = job.reel_name,
+            content     = job.script or "",
+            source      = "posted",
+            reel_job_id = job_id,
+            tag         = job.category or "uncategorized",
+        )
+        db.add(entry)
+        db.commit()
+    except Exception as exc:
+        logging.getLogger("diary").warning(f"Auto-save diary failed for job #{job_id}: {exc}")
+    finally:
+        db.close()
+
+
+@app.get("/diary", response_class=JSONResponse)
+async def list_diary(_user: str = Depends(require_auth)):
+    """Returns all diary entries sorted newest-first."""
+    db      = Session()
+    entries = db.query(ReelDraft).order_by(ReelDraft.updated_at.desc()).all()
+    db.close()
+    return [e.as_dict() for e in entries]
+
+
+@app.post("/diary", response_class=JSONResponse)
+async def save_draft(
+    title:   str = Form(...),
+    content: str = Form(...),
+    tag:     str = Form(""),
+    _user: str   = Depends(require_auth),
+):
+    """Save a new draft entry."""
+    db    = Session()
+    entry = ReelDraft(
+        title   = title.strip() or "Untitled",
+        content = content,
+        source  = "draft",
+        tag     = tag.strip() or None,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    result = entry.as_dict()
+    db.close()
+    return result
+
+
+@app.patch("/diary/{entry_id}", response_class=JSONResponse)
+async def update_draft(
+    entry_id: int,
+    title:    str = Form(""),
+    content:  str = Form(""),
+    tag:      str = Form(""),
+    _user: str    = Depends(require_auth),
+):
+    """Update title / content / tag of any diary entry (drafts and posted)."""
+    db    = Session()
+    entry = db.query(ReelDraft).filter(ReelDraft.id == entry_id).first()
+    if not entry:
+        db.close()
+        raise HTTPException(404, "Diary entry not found")
+    if title.strip():
+        entry.title   = title.strip()
+    if content:
+        entry.content = content
+    if tag.strip():
+        entry.tag = tag.strip()
+    entry.updated_at = datetime.utcnow()
+    db.commit()
+    result = entry.as_dict()
+    db.close()
+    return result
+
+
+@app.delete("/diary/{entry_id}", response_class=JSONResponse)
+async def delete_diary_entry(entry_id: int, _user: str = Depends(require_auth)):
+    db    = Session()
+    entry = db.query(ReelDraft).filter(ReelDraft.id == entry_id).first()
+    if not entry:
+        db.close()
+        raise HTTPException(404, "Diary entry not found")
+    db.delete(entry)
+    db.commit()
+    db.close()
+    return {"ok": True}

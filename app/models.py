@@ -66,6 +66,33 @@ class ReelJob(Base):
         }
 
 
+class ReelDraft(Base):
+    """Reel Diary — stores scripts as persistent notes (drafts or auto-saved posted reels)."""
+    __tablename__ = "diary_drafts"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    title       = Column(String(256), nullable=False)           # reel name / user-given title
+    content     = Column(Text, nullable=False)                  # the full content.md script text
+    source      = Column(String(16), default="draft")           # "draft" | "posted"
+    reel_job_id = Column(Integer, nullable=True)                # links to ReelJob.id if source=posted
+    tag         = Column(String(64), nullable=True)             # optional colour tag / category
+
+    created_at  = Column(DateTime, default=datetime.utcnow)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def as_dict(self):
+        return {
+            "id":          self.id,
+            "title":       self.title,
+            "content":     self.content,
+            "source":      self.source,
+            "reel_job_id": self.reel_job_id,
+            "tag":         self.tag,
+            "created_at":  self.created_at.isoformat() if self.created_at else None,
+            "updated_at":  self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 def init_db():
     Base.metadata.create_all(engine)
     # Safe migration: add new columns to existing databases that lack them
