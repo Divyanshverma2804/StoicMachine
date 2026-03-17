@@ -2,13 +2,14 @@
 scheduler.py — APScheduler background worker.
   • Every 60s:  pick one PENDING job → render it (subprocess-safe via thread)
   • Every 60s:  pick RENDERED jobs whose upload_time <= now → upload to YT
+  • Every 5m:   watchdog — reset jobs stuck in 'rendering' for > 20 minutes
   • Every 6h:   refresh YT view counts for all done jobs
   • Every 24h:  delete output video files for old uploaded jobs
                 (keeps the N most-recent done jobs on disk, deletes the rest)
 Runs inside the FastAPI process via lifespan.
 """
 import logging, json, os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from .models import Session, ReelJob, ReelDraft, JobStatus
@@ -16,6 +17,11 @@ from .renderer import render_reel
 from .uploader import upload_video, build_yt_title_and_description, extract_tags_from_script, fetch_video_stats
 
 log = logging.getLogger("scheduler")
+
+# A job stuck in 'rendering' for longer than this is considered dead
+RENDER_TIMEOUT_MINUTES = int(os.environ.get("RENDER_TIMEOUT_MINUTES", "20"))
+
+MAX_RETRY = int(os.environ.get("RENDER_MAX_RETRY", "3"))
 
 
 def _utcnow():
@@ -65,8 +71,8 @@ def render_tick():
         db2.rollback()
         db2.refresh(job2)
         job2.retry_count += 1
-        job2.status    = JobStatus.failed if job2.retry_count >= 3 else JobStatus.pending
-        job2.error_msg = str(e)
+        job2.status     = JobStatus.failed if job2.retry_count >= MAX_RETRY else JobStatus.pending
+        job2.error_msg  = str(e)
         job2.updated_at = _utcnow()
         db2.commit()
     finally:
@@ -133,13 +139,95 @@ def upload_tick():
         except Exception as e:
             log.error(f"[scheduler] upload FAILED job #{job.id}: {e}")
             job.retry_count += 1
-            job.status    = JobStatus.failed if job.retry_count >= 3 else JobStatus.rendered
+            job.status    = JobStatus.failed if job.retry_count >= MAX_RETRY else JobStatus.rendered
             job.error_msg = str(e)
         finally:
             job.updated_at = _utcnow()
             db.commit()
 
     db.close()
+
+
+# ── Watchdog tick ─────────────────────────────────────────
+
+def watchdog_tick():
+    """
+    Detects jobs silently stuck in 'rendering' status.
+
+    A job is considered stuck when:
+      - status == rendering
+      - updated_at has not changed for > RENDER_TIMEOUT_MINUTES
+
+    This happens when the renderer process is OOM-killed, the Docker
+    container restarts mid-render, or Chatterbox crashes without raising
+    a catchable exception. The job status never transitions and it freezes
+    in 'rendering' forever until this watchdog resets it.
+
+    Recovery logic:
+      - retry_count < MAX_RETRY  → reset to 'pending' (auto-retries next render_tick)
+      - retry_count >= MAX_RETRY → mark as 'failed' (shows Retry button on portal)
+    """
+    db = Session()
+    try:
+        cutoff = _utcnow() - timedelta(minutes=RENDER_TIMEOUT_MINUTES)
+
+        stuck_jobs = (
+            db.query(ReelJob)
+            .filter(
+                ReelJob.status     == JobStatus.rendering,
+                ReelJob.updated_at <= cutoff,
+            )
+            .all()
+        )
+
+        if not stuck_jobs:
+            return
+
+        log.warning(f"[watchdog] Found {len(stuck_jobs)} stuck job(s) — resetting.")
+
+        for job in stuck_jobs:
+            minutes_stuck = int((_utcnow() - job.updated_at).total_seconds() / 60)
+            log.warning(
+                f"[watchdog] Job #{job.id} '{job.reel_name}' stuck for "
+                f"~{minutes_stuck}m (retry_count={job.retry_count})"
+            )
+
+            job.retry_count += 1
+
+            if job.retry_count >= MAX_RETRY:
+                # Exhausted retries — mark failed, show Retry button on portal
+                job.status    = JobStatus.failed
+                job.error_msg = (
+                    f"Render timeout — job was stuck in rendering for over "
+                    f"{minutes_stuck} minutes and has exhausted {MAX_RETRY} retries. "
+                    f"Click Retry to reprocess manually."
+                )
+                log.warning(
+                    f"[watchdog] Job #{job.id} → failed "
+                    f"(retry_count={job.retry_count} >= MAX_RETRY={MAX_RETRY})"
+                )
+            else:
+                # Still has retries left — reset to pending for auto-retry
+                job.status    = JobStatus.pending
+                job.error_msg = (
+                    f"Render timeout — was stuck for ~{minutes_stuck}m. "
+                    f"Auto-retrying (attempt {job.retry_count} of {MAX_RETRY})."
+                )
+                log.warning(
+                    f"[watchdog] Job #{job.id} → pending for auto-retry "
+                    f"(attempt {job.retry_count} of {MAX_RETRY})"
+                )
+
+            job.updated_at = _utcnow()
+
+        db.commit()
+        log.info(f"[watchdog] Reset {len(stuck_jobs)} stuck job(s).")
+
+    except Exception as e:
+        log.error(f"[watchdog] watchdog_tick error: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 
 # ── Stats refresh tick ───────────────────────────────────────
@@ -155,7 +243,7 @@ def stats_tick():
         jobs = (
             db.query(ReelJob)
             .filter(
-                ReelJob.status    == JobStatus.done,
+                ReelJob.status      == JobStatus.done,
                 ReelJob.yt_video_id != None,
             )
             .all()
@@ -213,7 +301,7 @@ def cleanup_tick():
         done_jobs = (
             db.query(ReelJob)
             .filter(
-                ReelJob.status     == JobStatus.done,
+                ReelJob.status      == JobStatus.done,
                 ReelJob.output_path != None,   # only rows that still have a file path
             )
             .order_by(ReelJob.updated_at.desc())   # newest first
@@ -272,17 +360,20 @@ def cleanup_tick():
 _scheduler = BackgroundScheduler(timezone="UTC")
 
 def start_scheduler():
-    _scheduler.add_job(render_tick,  "interval", seconds=60,
-                       id="render_tick",  replace_existing=True)
-    _scheduler.add_job(upload_tick,  "interval", seconds=60,
-                       id="upload_tick",  replace_existing=True)
-    _scheduler.add_job(stats_tick,   "interval", hours=6,
-                       id="stats_tick",   replace_existing=True)
-    _scheduler.add_job(cleanup_tick, "interval", hours=24,
-                       id="cleanup_tick", replace_existing=True)
+    _scheduler.add_job(render_tick,   "interval", seconds=60,
+                       id="render_tick",   replace_existing=True)
+    _scheduler.add_job(upload_tick,   "interval", seconds=60,
+                       id="upload_tick",   replace_existing=True)
+    _scheduler.add_job(watchdog_tick, "interval", minutes=5,
+                       id="watchdog_tick", replace_existing=True)
+    _scheduler.add_job(stats_tick,    "interval", hours=6,
+                       id="stats_tick",    replace_existing=True)
+    _scheduler.add_job(cleanup_tick,  "interval", hours=24,
+                       id="cleanup_tick",  replace_existing=True)
     _scheduler.start()
     log.info(
         f"[scheduler] Started — render+upload every 60s | "
+        f"watchdog every 5m (timeout={RENDER_TIMEOUT_MINUTES}m, max_retry={MAX_RETRY}) | "
         f"stats every 6h | cleanup every 24h (keep {_KEEP_RECENT} recent)"
     )
 
