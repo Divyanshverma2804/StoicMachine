@@ -12,13 +12,20 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+# ── Rate limiting ─────────────────────────────────────────
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 from .models import init_db, Session, ReelJob, ReelDraft, JobStatus
 from .scheduler import start_scheduler, stop_scheduler
 from .uploader import upload_video, build_yt_title_and_description, extract_tags_from_script, fetch_video_stats
 
+log = logging.getLogger("main")
+
 # ── HTTP Basic Auth ───────────────────────────────────────
-_security = HTTPBasic()
-_PORTAL_USER = os.environ.get("PORTAL_USER", "admin")
+_security    = HTTPBasic()
+_PORTAL_USER = os.environ.get("PORTAL_USER",     "admin")
 _PORTAL_PASS = os.environ.get("PORTAL_PASSWORD", "reelforge")
 
 def require_auth(creds: HTTPBasicCredentials = Depends(_security)):
@@ -37,6 +44,25 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
 )
 
+# ── Scan detector — paths that only bots request ─────────
+# Any request to these paths gets a 404 and the IP is logged.
+# Add more as you see new scan patterns in your logs.
+_SCAN_PATHS = {
+    "/.env", "/.env.local", "/.env.production", "/.env.development",
+    "/.env.backup", "/.env.bak", "/.env.old", "/.env.save",
+    "/.git/config", "/.git/logs/HEAD",
+    "/wp-config.php", "/wp-config.php.bak",
+    "/credentials.json", "/secrets.json", "/secrets.yaml", "/secrets.yml",
+    "/.aws/credentials", "/root/.aws/credentials",
+    "/docker-compose.yml", "/docker-compose.yaml",
+    "/actuator/env", "/actuator/configprops",
+    "/proc/self/environ",
+    "/solr/admin/info/system",
+    "/v2/_catalog",
+    "/anthropic/v1/models",
+    "/v1/messages",
+}
+
 # ── Lifespan: init DB + start scheduler ──────────────────
 
 @asynccontextmanager
@@ -47,12 +73,40 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title="ReelForge", lifespan=lifespan)
+# ── App + rate limiter setup ──────────────────────────────
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+app     = FastAPI(title="ReelForge", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
 
-# ── Content-script parser (same logic as before) ─────────
+# ── Scan trap middleware ──────────────────────────────────
+# Catches known bot paths before they even reach a route handler.
+# Returns 404 immediately and logs the attempt with the source IP.
+
+@app.middleware("http")
+async def scan_trap(request: Request, call_next):
+    path = request.url.path.lower()
+
+    # Check against known scan paths
+    if path in _SCAN_PATHS:
+        client_ip = request.client.host if request.client else "unknown"
+        log.warning(f"[scan_trap] Blocked scan attempt: {client_ip} → {path}")
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+    # Also catch path traversal attempts (../../ etc)
+    if "../" in path or "%2f" in path.lower() or "%252f" in path.lower():
+        client_ip = request.client.host if request.client else "unknown"
+        log.warning(f"[scan_trap] Blocked path traversal: {client_ip} → {path}")
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+    return await call_next(request)
+
+
+# ── Content-script parser ─────────────────────────────────
 
 def parse_content_md(raw: str) -> list[dict]:
     reels  = []
@@ -66,7 +120,6 @@ def parse_content_md(raw: str) -> list[dict]:
             continue
         reel_name = name_match.group(1).strip()
 
-        # Optional # Category: line (sits directly below # ReelName:)
         cat_match = re.search(r"#\s*Category\s*:\s*(.+)", block, re.IGNORECASE)
         category  = cat_match.group(1).strip() if cat_match else "uncategorized"
 
@@ -99,6 +152,7 @@ def parse_content_md(raw: str) -> list[dict]:
 # ── Routes ────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
+@limiter.limit("60/minute")
 async def index(request: Request, _user: str = Depends(require_auth)):
     db     = Session()
     jobs   = db.query(ReelJob).order_by(ReelJob.created_at.desc()).limit(100).all()
@@ -110,19 +164,19 @@ async def index(request: Request, _user: str = Depends(require_auth)):
 
 
 @app.post("/submit")
+@limiter.limit("20/minute")
 async def submit_content(
     request: Request,
     content_md: str  = Form(...),
-    upload_time: str = Form(""),       # ISO datetime string, optional global default
-    per_reel_times: str = Form("{}"),  # JSON: {"reel_name": "ISO datetime", ...}
-    privacy: str     = Form(""),        # "public" | "private" | "unlisted" | "" (use env)
+    upload_time: str = Form(""),
+    per_reel_times: str = Form("{}"),
+    privacy: str     = Form(""),
     _user: str = Depends(require_auth),
 ):
     reels = parse_content_md(content_md)
     if not reels:
         raise HTTPException(400, "No reels found. Check your content.md format.")
 
-    # Parse optional time overrides
     try:
         per_times: dict = json.loads(per_reel_times) if per_reel_times.strip() else {}
     except json.JSONDecodeError:
@@ -140,7 +194,6 @@ async def submit_content(
     created = []
 
     for reel in reels:
-        # Per-reel time > global time > None
         reel_time = per_times.get(reel["name"])
         if reel_time:
             try:
@@ -166,7 +219,6 @@ async def submit_content(
     db.commit()
     db.close()
 
-    # Auto-save the raw script to the diary as a 'queued' entry
     try:
         from datetime import timezone as _tz
         _now_ist = datetime.now(_tz(timedelta(hours=5, minutes=30)))
@@ -187,7 +239,8 @@ async def submit_content(
 
 
 @app.get("/jobs", response_class=JSONResponse)
-async def list_jobs(batch_id: str = None, _user: str = Depends(require_auth)):
+@limiter.limit("120/minute")
+async def list_jobs(request: Request, batch_id: str = None, _user: str = Depends(require_auth)):
     db = Session()
     q  = db.query(ReelJob)
     if batch_id:
@@ -198,11 +251,8 @@ async def list_jobs(batch_id: str = None, _user: str = Depends(require_auth)):
 
 
 @app.get("/calendar/events", response_class=JSONResponse)
-async def calendar_events(_user: str = Depends(require_auth)):
-    """
-    Returns all jobs that have an upload_time, formatted for FullCalendar.
-    Also returns jobs without upload_time as 'unscheduled' for the sidebar.
-    """
+@limiter.limit("60/minute")
+async def calendar_events(request: Request, _user: str = Depends(require_auth)):
     db   = Session()
     jobs = db.query(ReelJob).order_by(ReelJob.created_at.desc()).limit(200).all()
     db.close()
@@ -237,19 +287,19 @@ async def calendar_events(_user: str = Depends(require_auth)):
 
 
 @app.post("/jobs/{job_id}/reschedule", response_class=JSONResponse)
+@limiter.limit("30/minute")
 async def reschedule_job(
+    request: Request,
     job_id: int,
     new_time: str = Form(...),
     _user: str = Depends(require_auth),
 ):
-    """Called by FullCalendar drag-and-drop with the new ISO datetime."""
     db  = Session()
     job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
     if not job:
         db.close()
         raise HTTPException(404, "Job not found")
     try:
-        # new_time arrives as ISO 8601 with Z suffix from FullCalendar
         job.upload_time = datetime.fromisoformat(new_time.replace("Z", ""))
     except ValueError:
         raise HTTPException(400, "Invalid datetime format")
@@ -260,7 +310,8 @@ async def reschedule_job(
 
 
 @app.post("/jobs/{job_id}/retry")
-async def retry_job(job_id: int, _user: str = Depends(require_auth)):
+@limiter.limit("20/minute")
+async def retry_job(request: Request, job_id: int, _user: str = Depends(require_auth)):
     db  = Session()
     job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
     if not job:
@@ -276,10 +327,6 @@ async def retry_job(job_id: int, _user: str = Depends(require_auth)):
 
 
 def _do_upload_now(job_id: int):
-    """
-    Worker function run in a background thread by upload_now endpoint.
-    Builds smart title/description/tags from the reel script, then uploads.
-    """
     from datetime import timezone
     def _utcnow():
         return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -291,7 +338,7 @@ def _do_upload_now(job_id: int):
         logging.getLogger("upload_now").error(f"Job #{job_id} not found or no output_path")
         return
 
-    log = logging.getLogger("upload_now")
+    _log = logging.getLogger("upload_now")
     job.status     = JobStatus.uploading
     job.updated_at = _utcnow()
     db.commit()
@@ -303,7 +350,7 @@ def _do_upload_now(job_id: int):
             extra_description = job.script[:500],
         )
         tags     = extract_tags_from_script(job.script)
-        privacy  = job.privacy   # per-job toggle — None falls back to YT_PRIVACY env
+        privacy  = job.privacy
         video_id = upload_video(
             video_path       = job.output_path,
             title            = title,
@@ -314,11 +361,11 @@ def _do_upload_now(job_id: int):
         job.yt_video_id = video_id
         job.status      = JobStatus.done
         job.error_msg   = None
-        log.info(f"[upload_now] job #{job_id} uploaded → {video_id}")
-        db.commit()   # commit before diary so job.script is readable
+        _log.info(f"[upload_now] job #{job_id} uploaded → {video_id}")
+        db.commit()
         _auto_save_diary(job_id)
     except Exception as e:
-        log.error(f"[upload_now] FAILED job #{job_id}: {e}")
+        _log.error(f"[upload_now] FAILED job #{job_id}: {e}")
         job.retry_count += 1
         job.status    = JobStatus.failed if job.retry_count >= 3 else JobStatus.rendered
         job.error_msg = str(e)
@@ -329,15 +376,12 @@ def _do_upload_now(job_id: int):
 
 
 @app.post("/jobs/{job_id}/upload_now")
+@limiter.limit("10/minute")
 async def upload_now(
+    request: Request,
     job_id: int,
     _user: str = Depends(require_auth),
 ):
-    """
-    Immediately start uploading a rendered reel to YouTube without waiting
-    for the scheduler.  The upload runs in a background thread so the
-    response returns instantly and the UI can poll for status.
-    """
     db  = Session()
     job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
     if not job:
@@ -348,17 +392,17 @@ async def upload_now(
         raise HTTPException(400, f"Job is {job.status!r} — can only upload from 'rendered' or 'failed' state")
     if not job.output_path:
         db.close()
-        raise HTTPException(400, "No output file found for this job yet — please wait for rendering to complete")
+        raise HTTPException(400, "No output file found for this job yet")
     db.close()
 
-    # Kick off upload in a daemon thread so FastAPI response isn't blocked
     t = threading.Thread(target=_do_upload_now, args=(job_id,), daemon=True)
     t.start()
     return {"ok": True, "job_id": job_id, "message": "Upload started — check status in a few seconds"}
 
 
 @app.post("/jobs/{job_id}/set_upload_time")
-async def set_upload_time(job_id: int, upload_time: str = Form(...), _user: str = Depends(require_auth)):
+@limiter.limit("30/minute")
+async def set_upload_time(request: Request, job_id: int, upload_time: str = Form(...), _user: str = Depends(require_auth)):
     db  = Session()
     job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
     if not job:
@@ -375,7 +419,8 @@ async def set_upload_time(job_id: int, upload_time: str = Form(...), _user: str 
 
 
 @app.post("/jobs/{job_id}/set_privacy")
-async def set_privacy(job_id: int, privacy: str = Form(...), _user: str = Depends(require_auth)):
+@limiter.limit("30/minute")
+async def set_privacy(request: Request, job_id: int, privacy: str = Form(...), _user: str = Depends(require_auth)):
     _VALID = {"public", "private", "unlisted"}
     if privacy not in _VALID:
         raise HTTPException(400, f"privacy must be one of {_VALID}")
@@ -392,7 +437,8 @@ async def set_privacy(job_id: int, privacy: str = Form(...), _user: str = Depend
 
 
 @app.delete("/jobs/{job_id}")
-async def delete_job(job_id: int, _user: str = Depends(require_auth)):
+@limiter.limit("20/minute")
+async def delete_job(request: Request, job_id: int, _user: str = Depends(require_auth)):
     db  = Session()
     job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
     if not job:
@@ -405,12 +451,8 @@ async def delete_job(job_id: int, _user: str = Depends(require_auth)):
 
 
 @app.post("/jobs/{job_id}/refresh_stats")
-async def refresh_stats(job_id: int, _user: str = Depends(require_auth)):
-    """
-    On-demand stats refresh for a single job.
-    Calls the YouTube Data API and updates the views column immediately.
-    Only works on jobs that are 'done' and have a yt_video_id.
-    """
+@limiter.limit("20/minute")
+async def refresh_stats(request: Request, job_id: int, _user: str = Depends(require_auth)):
     db  = Session()
     job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
     if not job:
@@ -422,7 +464,7 @@ async def refresh_stats(job_id: int, _user: str = Depends(require_auth)):
     yt_id = job.yt_video_id
     db.close()
 
-    stats = fetch_video_stats(yt_id)   # safe — returns zeros on error
+    stats = fetch_video_stats(yt_id)
 
     db2  = Session()
     job2 = db2.query(ReelJob).filter(ReelJob.id == job_id).first()
@@ -448,14 +490,8 @@ async def health():
 
 
 @app.get("/analytics/categories", response_class=JSONResponse)
-async def analytics_categories(_user: str = Depends(require_auth)):
-    """
-    Returns a per-category summary:
-      - total jobs
-      - done count
-      - failed count
-      - avg_views: average of the 'views' column for done jobs in that category
-    """
+@limiter.limit("30/minute")
+async def analytics_categories(request: Request, _user: str = Depends(require_auth)):
     db   = Session()
     jobs = db.query(ReelJob).all()
     db.close()
@@ -465,23 +501,22 @@ async def analytics_categories(_user: str = Depends(require_auth)):
         cat = job.category or "uncategorized"
         if cat not in summary:
             summary[cat] = {
-                "category":   cat,
-                "total":      0,
-                "done":       0,
-                "failed":     0,
-                "avg_views":  0,
-                "_view_sum":  0,   # internal accumulator, stripped before returning
-                "_done_views":0,
+                "category":    cat,
+                "total":       0,
+                "done":        0,
+                "failed":      0,
+                "avg_views":   0,
+                "_view_sum":   0,
+                "_done_views": 0,
             }
         summary[cat]["total"] += 1
         if job.status == JobStatus.done:
-            summary[cat]["done"] += 1
+            summary[cat]["done"]        += 1
             summary[cat]["_view_sum"]   += job.views or 0
             summary[cat]["_done_views"] += 1
         elif job.status == JobStatus.failed:
             summary[cat]["failed"] += 1
 
-    # Compute avg_views and strip internal keys
     result = []
     for rec in summary.values():
         done_with_views = rec.pop("_done_views")
@@ -497,10 +532,6 @@ async def analytics_categories(_user: str = Depends(require_auth)):
 # ═══════════════════════════════════════════════════════════════
 
 def _auto_save_diary(job_id: int):
-    """
-    Called after a job finishes uploading.  Saves the reel script to the
-    diary_drafts table as a 'posted' entry.  Idempotent — won't duplicate.
-    """
     db  = Session()
     try:
         job = db.query(ReelJob).filter(ReelJob.id == job_id).first()
@@ -508,7 +539,7 @@ def _auto_save_diary(job_id: int):
             return
         exists = db.query(ReelDraft).filter(ReelDraft.reel_job_id == job_id).first()
         if exists:
-            return   # already saved
+            return
         entry = ReelDraft(
             title       = job.reel_name,
             content     = job.script or "",
@@ -525,8 +556,8 @@ def _auto_save_diary(job_id: int):
 
 
 @app.get("/diary", response_class=JSONResponse)
-async def list_diary(_user: str = Depends(require_auth)):
-    """Returns all diary entries sorted newest-first."""
+@limiter.limit("60/minute")
+async def list_diary(request: Request, _user: str = Depends(require_auth)):
     db      = Session()
     entries = db.query(ReelDraft).order_by(ReelDraft.updated_at.desc()).all()
     db.close()
@@ -534,13 +565,14 @@ async def list_diary(_user: str = Depends(require_auth)):
 
 
 @app.post("/diary", response_class=JSONResponse)
+@limiter.limit("20/minute")
 async def save_draft(
+    request: Request,
     title:   str = Form(...),
     content: str = Form(...),
     tag:     str = Form(""),
     _user: str   = Depends(require_auth),
 ):
-    """Save a new draft entry."""
     db    = Session()
     entry = ReelDraft(
         title   = title.strip() or "Untitled",
@@ -557,14 +589,15 @@ async def save_draft(
 
 
 @app.patch("/diary/{entry_id}", response_class=JSONResponse)
+@limiter.limit("20/minute")
 async def update_draft(
+    request: Request,
     entry_id: int,
     title:    str = Form(""),
     content:  str = Form(""),
     tag:      str = Form(""),
     _user: str    = Depends(require_auth),
 ):
-    """Update title / content / tag of any diary entry (drafts and posted)."""
     db    = Session()
     entry = db.query(ReelDraft).filter(ReelDraft.id == entry_id).first()
     if not entry:
@@ -584,7 +617,8 @@ async def update_draft(
 
 
 @app.delete("/diary/{entry_id}", response_class=JSONResponse)
-async def delete_diary_entry(entry_id: int, _user: str = Depends(require_auth)):
+@limiter.limit("20/minute")
+async def delete_diary_entry(request: Request, entry_id: int, _user: str = Depends(require_auth)):
     db    = Session()
     entry = db.query(ReelDraft).filter(ReelDraft.id == entry_id).first()
     if not entry:
