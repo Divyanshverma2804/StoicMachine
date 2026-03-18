@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+# from fastapi.templating import Jinja2Templates
 
 # ── Rate limiting ─────────────────────────────────────────
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -74,11 +74,19 @@ async def lifespan(app: FastAPI):
 # ── App + rate limiter ────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 app     = FastAPI(title="ReelForge", lifespan=lifespan)
+# ── Serve React portal ────────────────────────────────────
+import pathlib
+_DIST = pathlib.Path(__file__).parent.parent / "portal" / "dist"
+
+if _DIST.exists():
+    app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+else:
+    log.warning("portal/dist not found — run `npm run build` inside portal/")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="app/templates")
+# app.mount("/static", StaticFiles(directory="static"), name="static")
+# templates = Jinja2Templates(directory="app/templates")
 
 
 # ── Scan trap middleware ──────────────────────────────────
@@ -141,16 +149,22 @@ def parse_content_md(raw: str) -> list[dict]:
 
 # ── Routes ────────────────────────────────────────────────
 
+# @app.get("/", response_class=HTMLResponse)
+# @limiter.limit("60/minute")
+# async def index(request: Request, _user: str = Depends(require_auth)):
+#     db     = Session()
+#     jobs   = db.query(ReelJob).order_by(ReelJob.created_at.desc()).limit(100).all()
+#     counts = {s.value: 0 for s in JobStatus}
+#     for j in jobs:
+#         counts[j.status] = counts.get(j.status, 0) + 1
+#     db.close()
+#     return templates.TemplateResponse("index.html", {"request": request, "jobs": jobs, "counts": counts})
+
 @app.get("/", response_class=HTMLResponse)
 @limiter.limit("60/minute")
 async def index(request: Request, _user: str = Depends(require_auth)):
-    db     = Session()
-    jobs   = db.query(ReelJob).order_by(ReelJob.created_at.desc()).limit(100).all()
-    counts = {s.value: 0 for s in JobStatus}
-    for j in jobs:
-        counts[j.status] = counts.get(j.status, 0) + 1
-    db.close()
-    return templates.TemplateResponse("index.html", {"request": request, "jobs": jobs, "counts": counts})
+    from fastapi.responses import FileResponse
+    return FileResponse(str(_DIST / "index.html"))
 
 
 @app.post("/submit")

@@ -1,0 +1,119 @@
+/* ═══════════════════════════════════════════════
+   REELFORGE — DARK TERMINAL/PRO DESIGN SYSTEM
+   JetBrains Mono + IBM Plex Mono. No decorations.
+   Sharp edges. Data-first. Railway × Vercel DNA.
+═══════════════════════════════════════════════ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Core palette — true blacks, not navy */
+  --black:      #000000;
+  --bg-0:       #0a0a0a;
+  --bg-1:       #111111;
+  --bg-2:       #161616;
+  --bg-3:       #1c1c1c;
+
+  /* Borders — hairlines */
+  --line-0:     #1f1f1f;
+  --line-1:     #2a2a2a;
+  --line-2:     #3a3a3a;
+
+  /* Text hierarchy */
+  --text-0:     #f0f0f0;
+  --text-1:     #a0a0a0;
+  --text-2:     #606060;
+  --text-3:     #404040;
+
+  /* Single accent — electric green like Railway */
+  --accent:     #00e5a0;
+  --accent-dim: rgba(0, 229, 160, 0.12);
+  --accent-mid: rgba(0, 229, 160, 0.25);
+
+  /* Status colors — muted, functional */
+  --status-pending:   #f5a623;
+  --status-rendering: #7b68ee;
+  --status-rendered:  #50e3c2;
+  --status-uploading: #4a9eff;
+  --status-done:      #00e5a0;
+  --status-failed:    #ff4444;
+
+  /* Typography */
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+
+  /* Spacing unit */
+  --u: 4px;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-2); }
+
+/* ── Utility resets ── */
+button { cursor: pointer; font-family: var(--font-mono); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+input, textarea, select {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-0);
+  background: var(--bg-2);
+  border: 1px solid var(--line-1);
+  border-radius: 3px;
+  outline: none;
+  transition: border-color 0.1s;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent);
+}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+input[type=number] { -moz-appearance: textfield; }
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath fill='%23606060' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
+}
+
+/* ── Animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}

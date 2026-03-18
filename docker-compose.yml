@@ -15,6 +15,7 @@ services:
       - ./output:/app/output
       - ./stock:/app/stock
       - ./music.mp3:/app/music.mp3:ro
+      - ./portal/dist:/app/portal/dist:ro     # Added new portal frontend
       # Mount your YT client_secret.json
       - ./client_secret.json:/app/client_secret.json:ro
       - chatterbox_cache:/root/.cache/huggingface
