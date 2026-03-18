@@ -44,13 +44,11 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
 )
 
-# ── Scan detector — paths that only bots request ─────────
-# Any request to these paths gets a 404 and the IP is logged.
-# Add more as you see new scan patterns in your logs.
+# ── Scan detector ─────────────────────────────────────────
 _SCAN_PATHS = {
     "/.env", "/.env.local", "/.env.production", "/.env.development",
     "/.env.backup", "/.env.bak", "/.env.old", "/.env.save",
-    "/.git/config", "/.git/logs/HEAD",
+    "/.git/config", "/.git/logs/head",
     "/wp-config.php", "/wp-config.php.bak",
     "/credentials.json", "/secrets.json", "/secrets.yaml", "/secrets.yml",
     "/.aws/credentials", "/root/.aws/credentials",
@@ -63,7 +61,7 @@ _SCAN_PATHS = {
     "/v1/messages",
 }
 
-# ── Lifespan: init DB + start scheduler ──────────────────
+# ── Lifespan ──────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -73,7 +71,7 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 
-# ── App + rate limiter setup ──────────────────────────────
+# ── App + rate limiter ────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 app     = FastAPI(title="ReelForge", lifespan=lifespan)
 app.state.limiter = limiter
@@ -84,25 +82,17 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 # ── Scan trap middleware ──────────────────────────────────
-# Catches known bot paths before they even reach a route handler.
-# Returns 404 immediately and logs the attempt with the source IP.
-
 @app.middleware("http")
 async def scan_trap(request: Request, call_next):
     path = request.url.path.lower()
-
-    # Check against known scan paths
     if path in _SCAN_PATHS:
         client_ip = request.client.host if request.client else "unknown"
         log.warning(f"[scan_trap] Blocked scan attempt: {client_ip} → {path}")
         return JSONResponse(status_code=404, content={"detail": "Not Found"})
-
-    # Also catch path traversal attempts (../../ etc)
     if "../" in path or "%2f" in path.lower() or "%252f" in path.lower():
         client_ip = request.client.host if request.client else "unknown"
         log.warning(f"[scan_trap] Blocked path traversal: {client_ip} → {path}")
         return JSONResponse(status_code=404, content={"detail": "Not Found"})
-
     return await call_next(request)
 
 
@@ -248,6 +238,99 @@ async def list_jobs(request: Request, batch_id: str = None, _user: str = Depends
     jobs = q.order_by(ReelJob.created_at.desc()).all()
     db.close()
     return [j.as_dict() for j in jobs]
+
+
+# ── BULK SCHEDULE ─────────────────────────────────────────
+
+@app.post("/jobs/bulk_schedule", response_class=JSONResponse)
+@limiter.limit("30/minute")
+async def bulk_schedule(
+    request:  Request,
+    job_ids:  str = Form(...),   # comma-separated list of job IDs
+    span_hrs: float = Form(...), # total spread in hours e.g. 8.0
+    privacy:  str = Form(""),    # optional privacy override for all selected
+    _user: str = Depends(require_auth),
+):
+    """
+    Distribute selected rendered jobs evenly across a time span.
+
+    Timing logic:
+      - First video starts NOW + 5 minutes (safety margin so the user
+        can still be interacting with the UI without risking an immediate upload)
+      - Remaining videos spread evenly across [first_time, first_time + span_hrs]
+      - Gap = span_hrs / (n - 1) when n > 1, or span_hrs when n == 1
+      - All times are UTC naive datetimes stored to the DB
+
+    Only jobs with status == 'rendered' are accepted.
+    Job IDs that don't exist or aren't rendered are silently skipped.
+    Returns the list of scheduled jobs with their assigned upload times.
+    """
+    # Parse job ID list
+    try:
+        ids = [int(x.strip()) for x in job_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(400, "job_ids must be comma-separated integers")
+
+    if not ids:
+        raise HTTPException(400, "No job IDs provided")
+
+    if span_hrs <= 0 or span_hrs > 168:   # max 1 week span
+        raise HTTPException(400, "span_hrs must be between 0 and 168")
+
+    db = Session()
+    try:
+        # Fetch only rendered jobs from the provided IDs, preserve user's selection order
+        jobs = []
+        for jid in ids:
+            job = db.query(ReelJob).filter(
+                ReelJob.id == jid,
+                ReelJob.status == JobStatus.rendered,
+            ).first()
+            if job:
+                jobs.append(job)
+
+        if not jobs:
+            raise HTTPException(400, "No rendered jobs found in the provided IDs")
+
+        n = len(jobs)
+        now_utc    = datetime.utcnow()
+        first_time = now_utc + timedelta(minutes=5)   # 5-min safety margin
+
+        # Gap between uploads
+        # If only one reel: upload at first_time (span is irrelevant)
+        # If multiple: spread evenly so last one is at first_time + span_hrs
+        gap_seconds = (span_hrs * 3600) / (n - 1) if n > 1 else 0
+
+        scheduled = []
+        for i, job in enumerate(jobs):
+            upload_at = first_time + timedelta(seconds=gap_seconds * i)
+            job.upload_time = upload_at
+            job.updated_at  = now_utc
+            if privacy in {"public", "private", "unlisted"}:
+                job.privacy = privacy
+
+            scheduled.append({
+                "id":          job.id,
+                "reel_name":   job.reel_name,
+                "upload_time": upload_at.isoformat(),
+                "slot":        i + 1,
+            })
+
+        db.commit()
+        log.info(
+            f"[bulk_schedule] Scheduled {n} reels across {span_hrs}h "
+            f"starting {first_time.isoformat()} UTC"
+        )
+        return {"ok": True, "scheduled": scheduled, "count": n}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        log.error(f"[bulk_schedule] Error: {e}")
+        raise HTTPException(500, f"Bulk schedule failed: {e}")
+    finally:
+        db.close()
 
 
 @app.get("/calendar/events", response_class=JSONResponse)
@@ -527,9 +610,9 @@ async def analytics_categories(request: Request, _user: str = Depends(require_au
     return sorted(result, key=lambda x: x["total"], reverse=True)
 
 
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════
 # DIARY API
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════
 
 def _auto_save_diary(job_id: int):
     db  = Session()

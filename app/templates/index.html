@@ -370,6 +370,175 @@
     transform: none !important;
   }
 
+  /* ── Job card checkbox (shown on rendered cards only) ── */
+.job-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.job-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.job-select-label {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: 'DM Mono', monospace;
+  user-select: none;
+  cursor: pointer;
+}
+
+/* ── Bulk Schedule floating action bar ── */
+.bulk-bar {
+  position: sticky;
+  bottom: 20px;
+  z-index: 200;
+  margin-top: 12px;
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  padding: 16px 20px;
+  box-shadow: 0 8px 32px rgba(88,166,255,0.2), 0 0 0 1px rgba(88,166,255,0.1);
+  animation: slideUpBar .2s ease;
+  display: none;  /* shown via JS when selection > 0 */
+}
+.bulk-bar.visible { display: block; }
+@keyframes slideUpBar { from{transform:translateY(12px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+.bulk-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.bulk-bar-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bulk-bar-count {
+  background: var(--accent);
+  color: #0d1117;
+  border-radius: 20px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.bulk-bar-clear {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text3);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: 'Syne', sans-serif;
+  font-weight: 600;
+  transition: all .15s;
+}
+.bulk-bar-clear:hover { color: var(--fail); border-color: rgba(248,81,73,0.4); }
+
+.bulk-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.bulk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.bulk-field-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  font-family: 'DM Mono', monospace;
+}
+
+.bulk-span-input {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: 'DM Mono', monospace;
+  font-weight: 700;
+  width: 100px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.bulk-span-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.bulk-preview-list {
+  flex: 1;
+  min-width: 220px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.9;
+  max-height: 130px;
+  overflow-y: auto;
+}
+.bulk-preview-list .pv-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.pv-slot { color: var(--text3); min-width: 18px; }
+.pv-name { color: var(--text); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-time { color: var(--warn-bright); white-space: nowrap; }
+.pv-ist  { color: var(--text3); font-size: 10px; white-space: nowrap; }
+
+.btn-bulk-schedule {
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  color: #0d1117;
+  font-weight: 800;
+  padding: 10px 22px;
+  border-radius: 9px;
+  border: none;
+  font-family: 'Syne', sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+  box-shadow: 0 0 20px rgba(88,166,255,0.3);
+}
+.btn-bulk-schedule:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 28px rgba(88,166,255,0.45);
+}
+.btn-bulk-schedule:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* highlight selected job cards */
+.job-card.bulk-selected {
+  border-color: rgba(88,166,255,0.5);
+  background: rgba(88,166,255,0.04);
+}
+
+
   /* ── YT Title preview badge ── */
   .yt-title-preview {
     margin-top: 8px;
@@ -1328,6 +1497,67 @@ Type IRON if this hit.
             <option value="uncategorized">uncategorized</option>
           </select>
         </div>
+        
+
+         <!-- Bulk schedule bar — appears when rendered reels are selected -->
+        <div class="bulk-bar" id="bulkBar">
+          <div class="bulk-bar-header">
+            <div class="bulk-bar-title">
+              ⚡ Bulk Schedule
+              <span class="bulk-bar-count" id="bulkCount">0</span>
+              rendered reels selected
+            </div>
+            <button class="bulk-bar-clear" onclick="clearBulkSelection()">✕ Clear</button>
+          </div>
+
+          <div class="bulk-controls">
+            <!-- Span input -->
+            <div class="bulk-field">
+              <div class="bulk-field-label">Spread over (hours)</div>
+              <input
+                type="number"
+                class="bulk-span-input"
+                id="bulkSpanHrs"
+                min="0.5"
+                max="168"
+                step="0.5"
+                value="8"
+                oninput="updateBulkPreview()"
+              />
+            </div>
+
+            <!-- Privacy for bulk -->
+            <div class="bulk-field">
+              <div class="bulk-field-label">Visibility</div>
+              <div style="display:flex;gap:5px;align-items:center">
+                <button class="job-priv-chip active-pub" id="bpriv_public"
+                        onclick="setBulkPrivacy('public')">🌍 Public</button>
+                <button class="job-priv-chip" id="bpriv_unlisted"
+                        onclick="setBulkPrivacy('unlisted')">🔗 Unlisted</button>
+                <button class="job-priv-chip" id="bpriv_private"
+                        onclick="setBulkPrivacy('private')">🔒 Private</button>
+              </div>
+            </div>
+
+            <!-- Preview list -->
+            <div class="bulk-field" style="flex:1">
+              <div class="bulk-field-label">Preview (UTC → IST)</div>
+              <div class="bulk-preview-list" id="bulkPreviewList">
+                <span style="color:var(--text3)">Select reels above to preview schedule…</span>
+              </div>
+            </div>
+
+            <!-- Confirm button -->
+            <div class="bulk-field">
+              <div class="bulk-field-label">&nbsp;</div>
+              <button class="btn-bulk-schedule" id="bulkConfirmBtn" onclick="confirmBulkSchedule()">
+                📅 Schedule All
+              </button>
+            </div>
+          </div>
+        </div><!-- end bulk-bar -->
+
+
 
         <div id="jobsContainer">
           {% if not jobs %}
@@ -2654,6 +2884,242 @@ function switchTab(tab) {
     loadAnalytics();
   }
 }
+
+
+
+// ═══════════════════════════════════════════════════════════
+// BULK SCHEDULE
+// ═══════════════════════════════════════════════════════════
+
+// State
+let _bulkSelected  = new Set();   // Set of job ID strings
+let _bulkPrivacy   = 'public';
+let _bulkJobNames  = {};          // id → reel_name cache
+
+function _getBulkSpanHrs() {
+  const v = parseFloat(document.getElementById('bulkSpanHrs')?.value || '8');
+  return isNaN(v) || v <= 0 ? 8 : v;
+}
+
+// Called when a checkbox is toggled
+function toggleBulkSelect(jobId, checked) {
+  const card = document.getElementById(`job-${jobId}`);
+  if (checked) {
+    _bulkSelected.add(String(jobId));
+    card?.classList.add('bulk-selected');
+  } else {
+    _bulkSelected.delete(String(jobId));
+    card?.classList.remove('bulk-selected');
+  }
+  updateBulkBar();
+}
+
+function clearBulkSelection() {
+  _bulkSelected.forEach(id => {
+    document.getElementById(`job-${id}`)?.classList.remove('bulk-selected');
+    const cb = document.getElementById(`cb-${id}`);
+    if (cb) cb.checked = false;
+  });
+  _bulkSelected.clear();
+  updateBulkBar();
+}
+
+function setBulkPrivacy(val) {
+  _bulkPrivacy = val;
+  ['public','unlisted','private'].forEach(p => {
+    const btn = document.getElementById(`bpriv_${p}`);
+    if (!btn) return;
+    btn.classList.remove('active-pub','active-unl','active-priv');
+    if (p === val) {
+      const cls = p === 'public' ? 'active-pub' : p === 'unlisted' ? 'active-unl' : 'active-priv';
+      btn.classList.add(cls);
+    }
+  });
+  updateBulkPreview();
+}
+
+function updateBulkBar() {
+  const bar   = document.getElementById('bulkBar');
+  const count = document.getElementById('bulkCount');
+  const n     = _bulkSelected.size;
+  if (!bar) return;
+  bar.classList.toggle('visible', n > 0);
+  if (count) count.textContent = String(n);
+  updateBulkPreview();
+}
+
+function updateBulkPreview() {
+  const previewEl = document.getElementById('bulkPreviewList');
+  if (!previewEl) return;
+
+  const ids = [..._bulkSelected];
+  if (ids.length === 0) {
+    previewEl.innerHTML = `<span style="color:var(--text3)">Select rendered reels to preview…</span>`;
+    return;
+  }
+
+  const spanHrs    = _getBulkSpanHrs();
+  const now        = new Date();
+  const firstMs    = now.getTime() + 5 * 60 * 1000;            // +5 min
+  const n          = ids.length;
+  const gapMs      = n > 1 ? (spanHrs * 3600 * 1000) / (n - 1) : 0;
+
+  const rows = ids.map((id, i) => {
+    const uploadMs   = firstMs + gapMs * i;
+    const uploadDate = new Date(uploadMs);
+    const istDate    = utcToIST(uploadDate);
+
+    const utcStr = fmtDatetime(uploadDate);
+    const istStr = fmtDatetime(istDate);
+    const name   = _bulkJobNames[id] || `Job #${id}`;
+
+    return `<div class="pv-row">
+      <span class="pv-slot">${i + 1}.</span>
+      <span class="pv-name" title="${escHtml(name)}">${escHtml(name.replace(/_/g,' '))}</span>
+      <span class="pv-time">${utcStr} UTC</span>
+      <span class="pv-ist">→ ${istStr} IST</span>
+    </div>`;
+  });
+
+  previewEl.innerHTML = rows.join('');
+}
+
+async function confirmBulkSchedule() {
+  const ids = [..._bulkSelected];
+  if (ids.length === 0) return;
+
+  const spanHrs = _getBulkSpanHrs();
+  const btn     = document.getElementById('bulkConfirmBtn');
+
+  if (!confirm(
+    `Schedule ${ids.length} reel${ids.length > 1 ? 's' : ''} spread over ${spanHrs} hours?\n\n` +
+    `First upload: ~5 minutes from now\n` +
+    `Last upload:  ~${spanHrs} hours from now`
+  )) return;
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Scheduling…'; }
+
+  const fd = new FormData();
+  fd.append('job_ids',  ids.join(','));
+  fd.append('span_hrs', String(spanHrs));
+  fd.append('privacy',  _bulkPrivacy);
+
+  try {
+    const res  = await fetch('/jobs/bulk_schedule', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(`Bulk schedule failed: ${data.detail || res.statusText}`);
+      if (btn) { btn.disabled = false; btn.textContent = '📅 Schedule All'; }
+      return;
+    }
+
+    // Success — clear selection and refresh
+    clearBulkSelection();
+    refreshJobs();
+    if (btn) { btn.disabled = false; btn.textContent = '📅 Schedule All'; }
+
+    // Show a brief success notice
+    const bar = document.getElementById('bulkBar');
+    if (bar) {
+      const notice = document.createElement('div');
+      notice.style.cssText = 'color:var(--success);font-size:12px;font-weight:700;margin-top:8px;font-family:"DM Mono",monospace;';
+      notice.textContent = `✓ ${data.count} reel${data.count !== 1 ? 's' : ''} scheduled successfully`;
+      bar.appendChild(notice);
+      setTimeout(() => notice.remove(), 3000);
+    }
+
+  } catch(e) {
+    alert(`Network error: ${e.message}`);
+    if (btn) { btn.disabled = false; btn.textContent = '📅 Schedule All'; }
+  }
+}
+
+// ── Inject checkbox into rendered job cards ──────────────
+// Called by buildJobCard and also patches existing cards on page load
+
+function _injectCheckbox(card, jobId, jobName) {
+  // Don't add twice
+  if (card.querySelector('.job-select-wrap')) return;
+
+  _bulkJobNames[String(jobId)] = jobName;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'job-select-wrap';
+
+  const cb = document.createElement('input');
+  cb.type      = 'checkbox';
+  cb.className = 'job-checkbox';
+  cb.id        = `cb-${jobId}`;
+  cb.checked   = _bulkSelected.has(String(jobId));
+  cb.addEventListener('change', () => toggleBulkSelect(jobId, cb.checked));
+
+  const lbl = document.createElement('label');
+  lbl.htmlFor   = `cb-${jobId}`;
+  lbl.className = 'job-select-label';
+  lbl.textContent = 'Select for bulk schedule';
+
+  wrap.appendChild(cb);
+  wrap.appendChild(lbl);
+
+  // Insert at the very top of the card, before job-top
+  const jobTop = card.querySelector('.job-top');
+  if (jobTop) card.insertBefore(wrap, jobTop);
+  else card.prepend(wrap);
+}
+
+// ── Patch buildJobCard to add checkbox for rendered jobs ──
+const _origBuildJobCard = buildJobCard;
+function buildJobCard(job) {
+  const card = _origBuildJobCard(job);
+  if (job.status === 'rendered') {
+    _injectCheckbox(card, job.id, job.reel_name);
+  }
+  return card;
+}
+
+// ── Patch existing server-rendered cards on first load ────
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.job-card[data-status="rendered"]').forEach(card => {
+    const id   = card.id.replace('job-', '');
+    const name = card.querySelector('.job-name')?.textContent?.trim() || `Job #${id}`;
+    _injectCheckbox(card, id, name);
+  });
+});
+
+// ── Also handle status transitions in refreshJobs ─────────
+// When a card transitions TO rendered, inject checkbox
+// This is handled in the refreshJobs DOM rebuild — buildJobCard
+// is already patched above so new rendered cards get checkboxes.
+// For in-place status updates we patch the actions rebuild:
+const _origRefreshJobs = refreshJobs;
+// We hook into the per-card rebuild by overriding the status-change branch.
+// Simpler: after every refreshJobs call, sweep for rendered cards missing checkboxes.
+function _sweepCheckboxes() {
+  document.querySelectorAll('.job-card[data-status="rendered"]').forEach(card => {
+    if (!card.querySelector('.job-select-wrap')) {
+      const id   = card.id.replace('job-', '');
+      const name = card.querySelector('.job-name')?.textContent?.trim() || `Job #${id}`;
+      _injectCheckbox(card, id, name);
+    }
+  });
+  // Remove checkboxes from cards that are no longer rendered
+  document.querySelectorAll('.job-select-wrap').forEach(wrap => {
+    const card = wrap.closest('.job-card');
+    if (card && card.dataset.status !== 'rendered') {
+      const id = card.id.replace('job-', '');
+      _bulkSelected.delete(String(id));
+      wrap.remove();
+    }
+  });
+  updateBulkBar();
+}
+
+// Sweep after every job refresh
+setInterval(_sweepCheckboxes, 9000);
+// Also sweep immediately on load
+setTimeout(_sweepCheckboxes, 500);
+
 </script>
 
 </body>
