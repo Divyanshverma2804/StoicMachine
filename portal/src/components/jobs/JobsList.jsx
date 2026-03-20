@@ -12,7 +12,8 @@ const STATUS_ORDER = ['rendering','uploading','pending','rendered','failed','don
 
 export default function JobsList() {
   const { data: jobs = [], isLoading } = useJobs()
-  const [filter, setFilter] = useState('')
+  const [catFilter, setCatFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
   const [selected, setSelected] = useState(new Set())
 
   const counts = useMemo(() => {
@@ -22,13 +23,24 @@ export default function JobsList() {
   }, [jobs])
 
   const filtered = useMemo(() => {
-    const base = filter ? jobs.filter(j => (j.category || 'uncategorized') === filter) : jobs
+    let base = jobs
+    if (catFilter) {
+      base = base.filter(j => (j.category || 'uncategorized') === catFilter)
+    }
+    if (statusFilter) {
+      if (statusFilter === 'rendered_not_scheduled') {
+        base = base.filter(j => j.status === 'rendered' && !j.upload_time)
+      } else {
+        base = base.filter(j => j.status === statusFilter)
+      }
+    }
+
     return [...base].sort((a, b) => {
       const ai = STATUS_ORDER.indexOf(a.status)
       const bi = STATUS_ORDER.indexOf(b.status)
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
     })
-  }, [jobs, filter])
+  }, [jobs, catFilter, statusFilter])
 
   const toggleSelect = (id) => {
     setSelected(prev => {
@@ -64,60 +76,86 @@ export default function JobsList() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Stats bar */}
-      <div style={{
-        display: 'flex',
-        gap: 0,
-        borderBottom: '1px solid var(--line-0)',
-        flexShrink: 0,
-      }}>
-        {Object.entries(counts).map(([status, n]) => (
-          <div key={status} style={{
-            padding: '8px 14px',
-            borderRight: '1px solid var(--line-0)',
-            fontSize: 11,
-            fontFamily: 'var(--font-mono)',
-            color: n > 0 ? 'var(--text-1)' : 'var(--text-3)',
-          }}>
-            <span style={{ color: n > 0 ? 'var(--text-0)' : 'var(--text-3)', fontWeight: 600 }}>{n}</span>
-            {' '}{status}
-          </div>
-        ))}
-      </div>
+      {/* Stats & Filters */}
+      <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--line-0)', flexShrink: 0 }}>
+        {/* Status Filter */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0,
+          borderBottom: '1px solid var(--line-0)',
+          overflowX: 'auto',
+          padding: '0 4px',
+        }}>
+          <span style={{ fontSize: 10, color: 'var(--text-3)', padding: '0 10px', whiteSpace: 'nowrap', letterSpacing: '0.06em' }}>
+            STATUS
+          </span>
+          {[
+            { label: 'all', value: '' },
+            { label: 'rendered (unscheduled)', value: 'rendered_not_scheduled' },
+            { label: 'done', value: 'done' },
+            { label: 'failed', value: 'failed' },
+            { label: 'pending', value: 'pending' },
+            { label: 'rendering', value: 'rendering' },
+            { label: 'uploading', value: 'uploading' },
+          ].map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setStatusFilter(opt.value)}
+              style={{
+                padding: '9px 12px',
+                fontSize: 11,
+                fontFamily: 'var(--font-mono)',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: statusFilter === opt.value ? '1px solid var(--accent)' : '1px solid transparent',
+                color: statusFilter === opt.value ? 'var(--text-0)' : 'var(--text-2)',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.1s',
+              }}
+            >
+              {opt.label}
+              {counts[opt.value] > 0 && (
+                <span style={{ marginLeft: 6, fontSize: 9, opacity: 0.6 }}>({counts[opt.value]})</span>
+              )}
+            </button>
+          ))}
+        </div>
 
-      {/* Category filter */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 0,
-        borderBottom: '1px solid var(--line-0)',
-        flexShrink: 0,
-        overflowX: 'auto',
-        padding: '0 4px',
-      }}>
-        <span style={{ fontSize: 10, color: 'var(--text-3)', padding: '0 10px', whiteSpace: 'nowrap', letterSpacing: '0.06em' }}>
-          FILTER
-        </span>
-        {[{ label: 'all', value: '' }, ...CATEGORIES.map(c => ({ label: c, value: c }))].map(opt => (
-          <button
-            key={opt.value}
-            onClick={() => setFilter(opt.value)}
-            style={{
-              padding: '9px 12px',
-              fontSize: 11,
-              fontFamily: 'var(--font-mono)',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: filter === opt.value ? '1px solid var(--accent)' : '1px solid transparent',
-              color: filter === opt.value ? 'var(--text-0)' : 'var(--text-2)',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'color 0.1s',
-            }}
-          >
-            {opt.label}
-          </button>
-        ))}
+        {/* Category filter */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0,
+          flexShrink: 0,
+          overflowX: 'auto',
+          padding: '0 4px',
+        }}>
+          <span style={{ fontSize: 10, color: 'var(--text-3)', padding: '0 10px', whiteSpace: 'nowrap', letterSpacing: '0.06em' }}>
+            CATEGORY
+          </span>
+          {[{ label: 'all', value: '' }, ...CATEGORIES.map(c => ({ label: c, value: c }))].map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setCatFilter(opt.value)}
+              style={{
+                padding: '9px 12px',
+                fontSize: 11,
+                fontFamily: 'var(--font-mono)',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: catFilter === opt.value ? '1px solid var(--accent)' : '1px solid transparent',
+                color: catFilter === opt.value ? 'var(--text-0)' : 'var(--text-2)',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'color 0.1s',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Jobs */}

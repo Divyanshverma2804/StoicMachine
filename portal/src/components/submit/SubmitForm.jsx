@@ -109,7 +109,7 @@ export default function SubmitForm() {
             background: 'var(--bg-0)',
             border: '1px solid var(--line-1)',
             borderRadius: 3,
-            minHeight: 300,
+            minHeight: 100, // Reduced from 300
           }}
         />
       </div>
