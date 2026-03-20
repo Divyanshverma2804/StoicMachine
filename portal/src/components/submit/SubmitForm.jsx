@@ -55,10 +55,10 @@ export default function SubmitForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
     >
       {/* Textarea */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '14px 16px', gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', padding: '14px 16px', gap: 10 }}>
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -99,8 +99,7 @@ export default function SubmitForm() {
           onChange={e => setContent(e.target.value)}
           placeholder={`# ReelName: stoic_discipline\n\n## Hook:\nMost people quit when it gets hard.\n\n## Conflict:\nThey think motivation is the answer.\n\n## Shift:\nDiscipline is a decision.\n\n## Punch:\nThe ones who win aren't more motivated.\nThey're more committed.\n\n## Engage:\nType IRON if this hit.\n\n---\n\n# ReelName: next_reel\n...`}
           style={{
-            flex: 1,
-            resize: 'none',
+            resize: 'vertical', // Allow user to resize if they want
             width: '100%',
             padding: '10px 12px',
             lineHeight: 1.7,
@@ -109,7 +108,8 @@ export default function SubmitForm() {
             background: 'var(--bg-0)',
             border: '1px solid var(--line-1)',
             borderRadius: 3,
-            minHeight: 100, // Reduced from 300
+            minHeight: 200, // Reasonable default
+            maxHeight: 600,
           }}
         />
       </div>
@@ -122,7 +122,6 @@ export default function SubmitForm() {
         flexDirection: 'column',
         gap: 12,
         background: 'var(--bg-1)',
-        flexShrink: 0,
       }}>
         {/* Time picker */}
         <div>

@@ -27,7 +27,7 @@ export default function QueueTab() {
         }}>
           NEW BATCH
         </div>
-        <div style={{ flex: 1, overflow: 'auto' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
           <SubmitForm />
         </div>
       </div>
