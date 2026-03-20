@@ -11,26 +11,35 @@ const STATUS_COLORS = {
 
 export default function StatusBadge({ status }) {
   const color = STATUS_COLORS[status] || '#606060'
+  const isActive = ['rendering','uploading'].includes(status)
+  
   return (
     <span style={{
       display: 'inline-flex',
       alignItems: 'center',
-      gap: 5,
+      gap: 6,
       fontFamily: 'var(--font-mono)',
       fontSize: 10,
-      fontWeight: 600,
-      letterSpacing: '0.08em',
+      fontWeight: 700,
+      letterSpacing: '0.1em',
       textTransform: 'uppercase',
       color,
+      background: `${color}15`,
+      padding: '2px 8px',
+      borderRadius: 4,
+      border: `1px solid ${color}30`,
+      transition: 'all 0.2s ease',
+      animation: isActive ? 'blink 2s ease infinite' : 'none',
     }}>
       <span style={{
-        width: 5,
-        height: 5,
+        width: 6,
+        height: 6,
         borderRadius: '50%',
         background: color,
         flexShrink: 0,
-        animation: ['rendering','uploading'].includes(status)
-          ? 'pulse-dot 1.4s ease infinite'
+        boxShadow: isActive ? `0 0 8px ${color}` : 'none',
+        animation: isActive
+          ? 'pulse-dot 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
           : 'none',
       }} />
       {status}

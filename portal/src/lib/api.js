@@ -6,6 +6,14 @@ const api = axios.create({ baseURL: '' })
 export const fetchJobs = () =>
   api.get('/jobs').then(r => r.data)
 
+export const submitBatch = (contentMd, uploadTime, privacy) => {
+  const fd = new FormData()
+  fd.append('content_md', contentMd)
+  if (uploadTime) fd.append('upload_time', uploadTime)
+  if (privacy) fd.append('privacy', privacy)
+  return api.post('/submit', fd).then(r => r.data)
+}
+
 export const retryJob = (id) =>
   api.post(`/jobs/${id}/retry`)
 

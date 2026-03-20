@@ -10,6 +10,18 @@ export const useJobs = () =>
     staleTime: 4000,
   })
 
+export const useSubmitBatch = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ contentMd, uploadTime, privacy }) => api.submitBatch(contentMd, uploadTime, privacy),
+    onSuccess: (data) => {
+      qc.invalidateQueries(['jobs'])
+      toast.success(`${data.count || 'reels'} queued for processing`)
+    },
+    onError: () => toast.error('batch queue failed'),
+  })
+}
+
 export const useRetryJob = () => {
   const qc = useQueryClient()
   return useMutation({

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import DateTimePicker from '../ui/DateTimePicker'
 import Btn from '../ui/Btn'
+import { useSubmitBatch } from '../../hooks/useJobs'
 
 const PRIVACY_OPTS = [
   { value: 'public',   label: 'public'   },
@@ -12,7 +13,7 @@ export default function SubmitForm() {
   const [content, setContent] = useState(() => sessionStorage.getItem('rf_content') || '')
   const [pickedTime, setPickedTime] = useState(null)
   const [privacy, setPrivacy] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const mutation = useSubmitBatch()
 
   const reelCount = (content.match(/^# ReelName:/gm) || []).length
 
@@ -20,39 +21,42 @@ export default function SubmitForm() {
     sessionStorage.setItem('rf_content', content)
   }, [content])
 
-  const handleSubmit = (e) => {
-    if (reelCount === 0) {
-      e.preventDefault()
-      return
+  // Listen for external load events (from Diary)
+  useEffect(() => {
+    const handleLoad = () => setContent(sessionStorage.getItem('rf_content') || '')
+    window.addEventListener('rf_load_content', handleLoad)
+    return () => window.removeEventListener('rf_load_content', handleLoad)
+  }, [])
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (reelCount === 0 || mutation.isLoading) return
+
+    try {
+      await mutation.mutateAsync({
+        contentMd: content,
+        uploadTime: pickedTime?.datetimeLocal,
+        privacy
+      })
+      setContent('')
+      sessionStorage.removeItem('rf_content')
+    } catch (err) {
+      // toast handled in hook
     }
-    setSubmitting(true)
-    sessionStorage.removeItem('rf_content')
   }
 
-  const inputSty = {
-    padding: '5px 10px',
-    borderRadius: 3,
-    fontSize: 12,
-    color: 'var(--text-1)',
+  const handleClear = () => {
+    if (window.confirm('Clear all content?')) {
+      setContent('')
+      sessionStorage.removeItem('rf_content')
+    }
   }
 
   return (
     <form
-      method='POST'
-      action='/submit'
       onSubmit={handleSubmit}
       style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
     >
-      {/* Hidden actual input */}
-      <input
-        type='datetime-local'
-        name='upload_time'
-        value={pickedTime?.datetimeLocal || ''}
-        readOnly
-        style={{ display: 'none' }}
-      />
-      <input type='hidden' name='privacy' value={privacy} />
-
       {/* Textarea */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '14px 16px', gap: 10 }}>
         <div style={{
@@ -63,8 +67,27 @@ export default function SubmitForm() {
           color: 'var(--text-2)',
           letterSpacing: '0.06em',
         }}>
-          <span>CONTENT.MD</span>
-          <span style={{ color: reelCount > 0 ? 'var(--accent)' : 'var(--text-3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span>CONTENT.MD</span>
+            {content.length > 0 && (
+              <button
+                type='button'
+                onClick={handleClear}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-3)',
+                  fontSize: 9,
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0,
+                }}
+              >
+                CLEAR
+              </button>
+            )}
+          </div>
+          <span style={{ color: reelCount > 0 ? 'var(--accent)' : 'var(--text-3)', transition: 'color 0.2s' }}>
             {content.length > 0
               ? `${content.length} chars · ${reelCount} reel${reelCount !== 1 ? 's' : ''}`
               : '0 chars'}
@@ -72,7 +95,6 @@ export default function SubmitForm() {
         </div>
 
         <textarea
-          name='content_md'
           value={content}
           onChange={e => setContent(e.target.value)}
           placeholder={`# ReelName: stoic_discipline\n\n## Hook:\nMost people quit when it gets hard.\n\n## Conflict:\nThey think motivation is the answer.\n\n## Shift:\nDiscipline is a decision.\n\n## Punch:\nThe ones who win aren't more motivated.\nThey're more committed.\n\n## Engage:\nType IRON if this hit.\n\n---\n\n# ReelName: next_reel\n...`}
@@ -107,7 +129,7 @@ export default function SubmitForm() {
           <div style={{ fontSize: 10, color: 'var(--text-2)', letterSpacing: '0.06em', marginBottom: 7 }}>
             UPLOAD TIME (UTC) — applies to all reels
           </div>
-          <DateTimePicker value={null} onChange={setPickedTime} />
+          <DateTimePicker value={pickedTime} onChange={setPickedTime} />
         </div>
 
         {/* Privacy */}
@@ -149,9 +171,9 @@ export default function SubmitForm() {
           type='submit'
           variant='primary'
           size='lg'
-          disabled={submitting || reelCount === 0}
+          disabled={mutation.isLoading || reelCount === 0}
         >
-          {submitting
+          {mutation.isLoading
             ? 'queueing…'
             : reelCount > 0
               ? `queue ${reelCount} reel${reelCount !== 1 ? 's' : ''} →`

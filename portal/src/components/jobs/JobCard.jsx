@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import StatusBadge from '../ui/StatusBadge'
 import Btn from '../ui/Btn'
 import DateTimePicker from '../ui/DateTimePicker'
+import toast from 'react-hot-toast'
 import {
   useRetryJob, useDeleteJob, useSetUploadTime,
   useSetJobPrivacy, useUploadNow, useRefreshStats,
@@ -16,6 +17,7 @@ const PRIVACY_OPTS = [
 export default function JobCard({ job, selected, onToggleSelect }) {
   const [showTimePicker, setShowTimePicker] = useState(false)
   const [pickedTime, setPickedTime] = useState(null)
+  const [isHovered, setIsHovered] = useState(false)
 
   const retryJob     = useRetryJob()
   const deleteJob    = useDeleteJob()
@@ -33,15 +35,25 @@ export default function JobCard({ job, selected, onToggleSelect }) {
     setShowTimePicker(false)
   }
 
+  const handleCopyName = () => {
+    navigator.clipboard.writeText(job.reel_name)
+    toast.success('copied to clipboard', { duration: 1500, icon: '📋' })
+  }
+
   return (
-    <div style={{
-      borderBottom: '1px solid var(--line-0)',
-      padding: '14px 20px',
-      background: selected ? 'rgba(0,229,160,0.03)' : 'transparent',
-      borderLeft: selected ? '2px solid var(--accent)' : '2px solid transparent',
-      transition: 'all 0.1s',
-      animation: 'fadeIn 0.15s ease',
-    }}>
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        borderBottom: '1px solid var(--line-0)',
+        padding: '16px 20px',
+        background: selected ? 'rgba(0,229,160,0.03)' : (isHovered ? 'var(--bg-1)' : 'transparent'),
+        borderLeft: selected ? '2px solid var(--accent)' : '2px solid transparent',
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        animation: 'fadeIn 0.2s ease',
+        position: 'relative',
+      }}
+    >
       {/* Top row */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
         {isRendered && (
@@ -62,6 +74,25 @@ export default function JobCard({ job, selected, onToggleSelect }) {
             }}>
               {job.reel_name}
             </span>
+            <button
+              onClick={handleCopyName}
+              title="Copy Reel Name"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-3)',
+                cursor: 'pointer',
+                padding: '4px',
+                fontSize: 10,
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'color 0.1s',
+              }}
+              onMouseEnter={(e) => e.target.style.color = 'var(--text-1)'}
+              onMouseLeave={(e) => e.target.style.color = 'var(--text-3)'}
+            >
+              📋
+            </button>
             <StatusBadge status={job.status} />
             {job.category && job.category !== 'uncategorized' && (
               <span style={{

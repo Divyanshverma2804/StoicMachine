@@ -41,8 +41,24 @@ export default function JobsList() {
   const clearSelect = () => setSelected(new Set())
 
   if (isLoading) return (
-    <div style={{ padding: 20, color: 'var(--text-2)', fontSize: 12 }}>
-      loading jobs…
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Skeleton stats */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--line-0)' }}>
+        {[1,2,3,4,5,6].map(i => (
+          <div key={i} style={{ padding: '8px 14px', borderRight: '1px solid var(--line-0)', width: 80 }}>
+            <div style={{ height: 12, background: 'var(--bg-3)', borderRadius: 2, animation: 'pulse-dot 1.5s infinite' }} />
+          </div>
+        ))}
+      </div>
+      {/* Skeleton cards */}
+      <div style={{ flex: 1, padding: '20px' }}>
+        {[1,2,3,4].map(i => (
+          <div key={i} style={{ marginBottom: 20, padding: 16, border: '1px solid var(--line-0)', borderRadius: 4, opacity: 0.5 }}>
+            <div style={{ height: 14, width: '40%', background: 'var(--bg-3)', marginBottom: 12, animation: 'pulse-dot 1.5s infinite' }} />
+            <div style={{ height: 10, width: '60%', background: 'var(--bg-3)', animation: 'pulse-dot 1.5s infinite' }} />
+          </div>
+        ))}
+      </div>
     </div>
   )
 

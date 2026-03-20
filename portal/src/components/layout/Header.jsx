@@ -96,6 +96,26 @@ export default function Header({ activeTab, onTabChange }) {
         height: '100%',
         flexShrink: 0,
       }}>
+        {/* System Status */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '0 16px',
+          borderRight: '1px solid var(--line-0)',
+          height: '100%',
+        }}>
+          <div style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: 'var(--accent)',
+            boxShadow: '0 0 8px var(--accent)',
+            animation: 'pulse-dot 2s infinite',
+          }} />
+          <span style={{ fontSize: 10, color: 'var(--text-2)', letterSpacing: '0.05em' }}>SYSTEM LIVE</span>
+        </div>
+
         <div style={{
           padding: '0 16px',
           borderLeft: '1px solid var(--line-0)',
