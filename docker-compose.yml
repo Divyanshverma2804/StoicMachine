@@ -15,6 +15,8 @@ services:
       - ./output:/app/output
       - ./stock:/app/stock
       - ./music.mp3:/app/music.mp3:ro
+      - ./new_music_silent_banner.mp3:/app/new_music_silent_banner.mp3:ro
+      - ./sound:/app/sound:ro
       - ./portal/dist:/app/portal/dist:ro     # Added new portal frontend
       # Mount your YT client_secret.json
       - ./client_secret.json:/app/client_secret.json:ro
