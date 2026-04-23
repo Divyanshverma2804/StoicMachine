@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import DateTimePicker from '../ui/DateTimePicker'
 import Btn from '../ui/Btn'
+import VoiceSelector from '../ui/VoiceSelector'
 import { useSubmitBatch } from '../../hooks/useJobs'
 
 const PRIVACY_OPTS = [
@@ -13,6 +14,7 @@ export default function SubmitForm() {
   const [content, setContent] = useState(() => sessionStorage.getItem('rf_content') || '')
   const [pickedTime, setPickedTime] = useState(null)
   const [privacy, setPrivacy] = useState('')
+  const [voice, setVoice] = useState('')
   const mutation = useSubmitBatch()
 
   const reelCount = (content.match(/^# ReelName:/gm) || []).length
@@ -36,7 +38,8 @@ export default function SubmitForm() {
       await mutation.mutateAsync({
         contentMd: content,
         uploadTime: pickedTime?.datetimeLocal,
-        privacy
+        privacy,
+        voice,
       })
       setContent('')
       sessionStorage.removeItem('rf_content')
@@ -120,9 +123,14 @@ export default function SubmitForm() {
         padding: '12px 16px',
         display: 'flex',
         flexDirection: 'column',
-        gap: 12,
+        gap: 16,
         background: 'var(--bg-1)',
       }}>
+        {/* Voice selector */}
+        <div>
+          <VoiceSelector value={voice} onChange={setVoice} />
+        </div>
+
         {/* Time picker */}
         <div>
           <div style={{ fontSize: 10, color: 'var(--text-2)', letterSpacing: '0.06em', marginBottom: 7 }}>

@@ -44,6 +44,7 @@ class ReelJob(Base):
     category      = Column(String(64), nullable=True, default="uncategorized")
     views         = Column(Integer, nullable=True, default=0)
     privacy       = Column(String(16), nullable=True, default=None)  # None = use YT_PRIVACY env
+    voice         = Column(String(128), nullable=True, default=None)  # voice filename e.g. voice_ref_cilian_murphy.wav
 
     created_at    = Column(DateTime, default=datetime.utcnow)
     updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -62,6 +63,7 @@ class ReelJob(Base):
             "category":     self.category or "uncategorized",
             "views":        self.views or 0,
             "privacy":      self.privacy or None,
+            "voice":        self.voice or None,
             "created_at":   self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -106,6 +108,7 @@ def init_db():
                 ("category", "VARCHAR(64) DEFAULT 'uncategorized'"),
                 ("views",    "INTEGER DEFAULT 0"),
                 ("privacy",  "VARCHAR(16) DEFAULT NULL"),
+                ("voice",    "VARCHAR(128) DEFAULT NULL"),
             ]:
                 col_name, col_spec = col_def
                 if col_name not in col_names:

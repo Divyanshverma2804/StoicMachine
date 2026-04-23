@@ -13,7 +13,7 @@ export const useJobs = () =>
 export const useSubmitBatch = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ contentMd, uploadTime, privacy }) => api.submitBatch(contentMd, uploadTime, privacy),
+    mutationFn: ({ contentMd, uploadTime, privacy, voice }) => api.submitBatch(contentMd, uploadTime, privacy, voice),
     onSuccess: (data) => {
       qc.invalidateQueries(['jobs'])
       toast.success(`${data.count || 'reels'} queued for processing`)

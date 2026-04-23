@@ -195,17 +195,35 @@ def _preprocess_for_tts(text: str) -> str:
     return " ".join(cleaned)
 
 
-def _generate_voice_for_section(text: str, wav_path: str, section_key: str = "default"):
+def _generate_voice_for_section(text: str, wav_path: str, section_key: str = "default", voice: str | None = None):
     import torchaudio as ta
     model  = _get_tts_model()
     params = SECTION_TTS_PARAMS.get(section_key, SECTION_TTS_PARAMS["default"])
     exaggeration = float(os.environ.get("TTS_EXAGGERATION", str(params["exaggeration"])))
     cfg_weight   = float(os.environ.get("TTS_CFG_WEIGHT",   str(params["cfg_weight"])))
-    ref_clip     = os.environ.get("TTS_VOICE_REF", "").strip()
+    
+    # Determine which voice reference to use
+    ref_clip = None
+    
+    # Priority 1: Use passed voice parameter (specific per-reel voice)
+    if voice:
+        voices_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "voices")
+        voice_path = os.path.join(voices_dir, voice)
+        if os.path.exists(voice_path):
+            ref_clip = voice_path
+            log.info(f"[tts] Using voice reference: {voice}")
+        else:
+            log.warning(f"[tts] Voice file not found: {voice_path}, falling back to default")
+    
+    # Priority 2: Fall back to environment variable if no voice specified
+    if not ref_clip:
+        ref_clip = os.environ.get("TTS_VOICE_REF", "").strip()
+    
     kwargs = dict(exaggeration=exaggeration, cfg_weight=cfg_weight)
     if ref_clip and os.path.exists(ref_clip):
         kwargs["audio_prompt_path"] = ref_clip
-    log.info(f"[tts] {section_key}: exag={exaggeration:.2f} cfg={cfg_weight:.2f}")
+    
+    log.info(f"[tts] {section_key}: exag={exaggeration:.2f} cfg={cfg_weight:.2f} ref={bool(ref_clip)}")
     wav = model.generate(text, **kwargs)
     ta.save(wav_path, wav, model.sr)
 
@@ -237,13 +255,14 @@ async def generate_voice_sectioned(
     sections: dict | None,
     script:   str,
     mp3_out:  str,
+    voice: str | None = None,
 ) -> str:
     tmp_dir = os.path.dirname(mp3_out)
 
     if not sections:
         processed = _preprocess_for_tts(script)
         wav_path  = mp3_out.replace(".mp3", ".wav")
-        _generate_voice_for_section(processed, wav_path, "default")
+        _generate_voice_for_section(processed, wav_path, "default", voice=voice)
         _wav_to_mp3(wav_path, mp3_out)
         try: os.remove(wav_path)
         except OSError: pass
@@ -257,7 +276,7 @@ async def generate_voice_sectioned(
             continue
         processed = _preprocess_for_tts(text)
         wav_path  = os.path.join(tmp_dir, f"_sec_{key}_{os.path.basename(mp3_out)}.wav")
-        _generate_voice_for_section(processed, wav_path, key)
+        _generate_voice_for_section(processed, wav_path, key, voice=voice)
         wav_parts.append(wav_path)
         log.info(f"[tts] Section done: {key}")
 
@@ -1031,10 +1050,16 @@ def build_audio(
 # PUBLIC API
 # ═══════════════════════════════════════════════════════════════════
 
-def render_reel(reel_name: str, script: str, sections_json: str | None) -> str:
+def render_reel(reel_name: str, script: str, sections_json: str | None, voice: str | None = None) -> str:
     """
     Renders a single reel. Returns output .mp4 path.
     Raises on failure — caller handles retry / status update.
+    
+    Args:
+        reel_name: Name of the reel
+        script: Full script text
+        sections_json: JSON string of sections dict (optional)
+        voice: Voice filename to use (optional, e.g., "voice_ref_cilian_murphy.wav")
     """
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
     sections = json.loads(sections_json) if sections_json else None
@@ -1048,10 +1073,10 @@ def render_reel(reel_name: str, script: str, sections_json: str | None) -> str:
 
     # ── 1. Voice ──────────────────────────────────────────
     log.info("[render] Generating voice (Chatterbox, sectioned)...")
-    asyncio.run(generate_voice_sectioned(sections, script, voice_mp3))
-    voice     = AudioFileClip(voice_mp3)
-    voice_dur = voice.duration
-    total_dur = voice_dur + SILENCE_BUFFER + OUTRO_HOLD
+    asyncio.run(generate_voice_sectioned(sections, script, voice_mp3, voice=voice))
+    voice_obj  = AudioFileClip(voice_mp3)
+    voice_dur  = voice_obj.duration
+    total_dur  = voice_dur + SILENCE_BUFFER + OUTRO_HOLD
     log.info(f"[render] voice={voice_dur:.1f}s  total={total_dur:.1f}s")
 
     # ── 2. Forced alignment ────────────────────────────────

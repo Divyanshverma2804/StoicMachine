@@ -1,0 +1,11 @@
+# This directory contains voice reference files for ReelForge TTS synthesis
+# 
+# Place your voice reference files here following the naming convention:
+#   voice_ref_[speaker_name].wav
+#
+# Examples:
+#   voice_ref_cilian_murphy.wav
+#   voice_ref_morgan_freeman.wav
+#   voice_ref_deep_calm.wav
+#
+# For detailed instructions, see README.md

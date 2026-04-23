@@ -167,6 +167,31 @@ async def index(request: Request, _user: str = Depends(require_auth)):
     return FileResponse(str(_DIST / "index.html"))
 
 
+@app.get("/voices", response_class=JSONResponse)
+@limiter.limit("120/minute")
+async def list_voices(request: Request, _user: str = Depends(require_auth)):
+    """List all available voice references from voices/ directory."""
+    voices_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "voices")
+    voices = []
+    
+    if os.path.exists(voices_dir) and os.path.isdir(voices_dir):
+        for filename in sorted(os.listdir(voices_dir)):
+            if filename.lower().endswith(('.wav', '.mp3', '.flac')):
+                # Extract friendly name from filename (e.g., voice_ref_cilian_murphy.wav → Cilian Murphy)
+                base = os.path.splitext(filename)[0]
+                # Remove common prefixes
+                name = base.replace("voice_ref_", "").replace("voice_", "").replace("_", " ")
+                # Title case
+                name = name.title()
+                voices.append({
+                    "filename": filename,
+                    "name": name,
+                    "path": f"voices/{filename}",
+                })
+    
+    return voices
+
+
 @app.post("/submit")
 @limiter.limit("20/minute")
 async def submit_content(
@@ -175,6 +200,7 @@ async def submit_content(
     upload_time: str = Form(""),
     per_reel_times: str = Form("{}"),
     privacy: str     = Form(""),
+    voice: str       = Form(""),
     _user: str = Depends(require_auth),
 ):
     reels = parse_content_md(content_md)
@@ -216,6 +242,7 @@ async def submit_content(
             status        = JobStatus.pending,
             category      = reel.get("category", "uncategorized"),
             privacy       = privacy if privacy in {"public", "private", "unlisted"} else None,
+            voice         = voice if voice.strip() else None,
         )
         db.add(job)
         created.append(reel["name"])

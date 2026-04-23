@@ -58,7 +58,7 @@ def render_tick():
     db2 = Session()
     try:
         job2 = db2.query(ReelJob).filter(ReelJob.id == job_id).first()
-        output_path = render_reel(job2.reel_name, job2.script, job2.sections_json)
+        output_path = render_reel(job2.reel_name, job2.script, job2.sections_json, voice=job2.voice)
         job2.status      = JobStatus.rendered
         job2.output_path = output_path
         job2.error_msg   = None
